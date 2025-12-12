@@ -6,7 +6,7 @@
  */
 
 #include <Arduino.h>
-#include "sensor_readings.h"
+#include "sensors/sensor_readings.h"
 
 // ============================================================================
 // GLOBAL OBJECTS
