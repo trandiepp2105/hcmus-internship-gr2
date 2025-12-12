@@ -6,7 +6,7 @@
  */
 
 #include <Arduino.h>
-#include "ph_calibration.h"
+#include "sensors/ph_calibration.h"
 
 // ============================================================================
 // GLOBAL OBJECTS
