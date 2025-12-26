@@ -1,0 +1,42 @@
+{
+  "name": "PH_CONTROLLER",
+  "description": "Profile for pH controller 1 input 4 output",
+  "image": null,
+  "type": "DEFAULT",
+  "transportType": "MQTT",
+  "provisionType": "ALLOW_CREATE_NEW_DEVICES",
+  "defaultRuleChainId": null,
+  "defaultDashboardId": null,
+  "defaultQueueName": null,
+  "provisionDeviceKey": "7b489653-2d36-45bd-9476-c7aa5b9ae5fc",
+  "firmwareId": null,
+  "softwareId": null,
+  "defaultEdgeRuleChainId": null,
+  "default": false,
+  "profileData": {
+    "configuration": {
+      "type": "DEFAULT"
+    },
+    "transportConfiguration": {
+      "type": "MQTT",
+      "deviceTelemetryTopic": "v1/devices/me/telemetry",
+      "deviceAttributesTopic": "v1/devices/me/attributes",
+      "deviceAttributesSubscribeTopic": "v1/devices/me/attributes",
+      "transportPayloadTypeConfiguration": {
+        "transportPayloadType": "JSON"
+      },
+      "sparkplug": false,
+      "sparkplugAttributesMetricNames": [
+        "Properties/*",
+        "Device Control/*",
+        "Node Control/*"
+      ],
+      "sendAckOnValidationException": false
+    },
+    "provisionConfiguration": {
+      "type": "ALLOW_CREATE_NEW_DEVICES",
+      "provisionDeviceSecret": "5BnZwv6WnuNbs6E45yNq"
+    },
+    "alarms": []
+  }
+}
