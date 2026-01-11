@@ -1,16 +1,31 @@
+#include <Arduino.h>
+#include <RAMStorage.h>
 #include "middleware/PH_BSP.h"
-#include "middleware/STORAGE_BSP.h"
-#include <SENSORS.h>
-#include <STORAGE.h>
+#include "middleware/RAMStorage_BSP.h"
 
-SENSORS phFilter;
-STORAGE storageDriver;
+// 1. Khởi tạo các đối tượng Driver (Thấp nhất)
+RAMStorage ramDriver;
 
-PH_BSP phSys(&phFilter);
-STORAGE_BSP storageSys(&storageDriver);
+// 2. Khởi tạo các bộ BSP riêng biệt (Tầng giữa)
+PH_BSP phSys(34);
+RAMStorage_BSP storageSys(&ramDriver);
+
+void setup() {
+    Serial.begin(115200);
+    phSys.begin();
+    Serial.println("System Initialized: Decoupled Architecture with Struct Telemetry");
+}
 
 void loop() {
-    float currentPH = phSys.getPH();      // Bước 1: Lấy dữ liệu từ pH
-    storageSys.saveData(currentPH);      // Bước 2: Đưa sang Storage để lưu
-    delay(2000);
+    // BƯỚC 1: Đọc dữ liệu từ bộ BSP pH độc lập
+    float currentPH = phSys.readRaw();
+    float currentTemp = 25.5; // Giả lập giá trị nhiệt độ
+
+    // BƯỚC 2: Chuyển dữ liệu sang bộ BSP lưu trữ để đóng gói vào struct
+    storageSys.logTelemetry(currentPH, currentTemp);
+
+    // Kiểm tra dữ liệu
+    Serial.printf("Logged -> pH: %.2f, Records in RAM: %d\n", currentPH, ramDriver.getCount());
+    
+    delay(3000);
 }

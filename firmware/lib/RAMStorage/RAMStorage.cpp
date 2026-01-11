@@ -1,39 +1,32 @@
-#include "STORAGE.h"
-#include <string.h>
+#include "RAMStorage.h"
 
-STORAGE::STORAGE() : head(0), tail(0), count(0)
-{
-    memset(buffer, 0, sizeof(buffer));
-}
+RAMStorage::RAMStorage() : head(0), tail(0), count(0) {}
 
-bool STORAGE::push(const char *data)
-{
-    strncpy(buffer[head], data, ITEM_SIZE - 1);
-    buffer[head][ITEM_SIZE - 1] = '\0';
+bool RAMStorage::push(TelemetryData data) {
+    // Lưu struct trực tiếp vào mảng tại vị trí head
+    buffer[head] = data; 
+    
+    // Di chuyển chỉ số head theo vòng tròn
     head = (head + 1) % MAX_ITEMS;
-    if (count < MAX_ITEMS)
-        count++;
-    else
+
+    if (count < MAX_ITEMS) {
+        count++; // Tăng số lượng nếu chưa đầy
+    } else {
+        // Nếu đầy, ghi đè bản ghi cũ nhất và di chuyển tail
         tail = (tail + 1) % MAX_ITEMS;
+    }
     return true;
 }
 
-bool STORAGE::pop(char *output)
-{
-    if (count == 0)
-        return false;
-    strncpy(output, buffer[tail], ITEM_SIZE);
+bool RAMStorage::pop(TelemetryData &output) {
+    if (count == 0) return false;
+
+    // Lấy dữ liệu từ vị trí tail (FIFO)
+    output = buffer[tail];
     tail = (tail + 1) % MAX_ITEMS;
     count--;
     return true;
 }
 
-bool STORAGE::readBool(const char *key, bool defaultValue)
-{
-    if (strcmp(key, "is_empty") == 0)
-        return isEmpty();
-    return defaultValue;
-}
-
-int STORAGE::getCount() { return count; }
-bool STORAGE::isEmpty() { return count == 0; }
+int RAMStorage::getCount() { return count; }
+bool RAMStorage::isEmpty() { return count == 0; }

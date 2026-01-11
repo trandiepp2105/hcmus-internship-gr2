@@ -1,54 +1,45 @@
-#ifndef STORAGE_H
-#define STORAGE_H
+#ifndef RAMSTORAGE_H
+#define RAMSTORAGE_H
 
 #include <Arduino.h>
 
-/**
- * @brief Kích thước bộ đệm vòng để đảm bảo an toàn DRAM cho ESP32.
- * @details Giới hạn 500 bản ghi để tránh lỗi overflow dram0_0_seg.
+/** * @struct TelemetryData
+ * @brief Định nghĩa cấu trúc dữ liệu telemetry để lưu trữ khi mất WiFi.
  */
-#define MAX_ITEMS 500
-#define ITEM_SIZE 150
+struct TelemetryData {
+    float phValue;      // Giá trị pH
+    float tempValue;    // Giá trị nhiệt độ
+    uint32_t timestamp; // Thời gian ghi nhận (epoch time hoặc uptime)
+};
+
+#define MAX_ITEMS 500 // Giới hạn số lượng bản ghi để bảo vệ bộ nhớ DRAM
 
 /**
- * @class STORAGE
- * @brief Lớp Driver quản lý việc lưu trữ dữ liệu thô vào RAM (SRAM).
+ * @class RAMStorage
+ * @brief Driver quản lý bộ đệm vòng (Circular Buffer) cho dữ liệu Telemetry.
+ * @note Đã tách biệt hoàn toàn khỏi logic pH và Calib theo yêu cầu của Lead.
  */
-class STORAGE
-{
+class RAMStorage {
 private:
-    char buffer[MAX_ITEMS][ITEM_SIZE];
-    int head;
-    int tail;
-    int count;
+    TelemetryData buffer[MAX_ITEMS]; // Mảng lưu trữ các struct Telemetry
+    int head;  // Chỉ số vị trí ghi tiếp theo
+    int tail;  // Chỉ số vị trí đọc cũ nhất
+    int count; // Số lượng bản ghi hiện có trong bộ nhớ
 
 public:
-    /** @brief Khởi tạo vùng nhớ đệm vòng trên RAM */
-    STORAGE();
+    /** @brief Khởi tạo các chỉ số điều hướng bộ nhớ */
+    RAMStorage();
 
-    /**
-     * @brief Đẩy một bản ghi dữ liệu vào bộ đệm.
-     * @param data Chuỗi dữ liệu cần lưu (thường là JSON).
-     * @return true nếu lưu thành công.
-     */
-    bool push(const char *data);
+    /** @brief Đẩy một struct Telemetry vào hàng chờ lưu trữ */
+    bool push(TelemetryData data);
 
-    /**
-     * @brief Lấy bản ghi cũ nhất từ bộ đệm ra (FIFO).
-     * @param output Con trỏ chứa dữ liệu lấy ra.
-     * @return true nếu lấy được dữ liệu, false nếu bộ đệm trống.
-     */
-    bool pop(char *output);
+    /** @brief Lấy bản ghi Telemetry cũ nhất ra để xử lý */
+    bool pop(TelemetryData &output);
 
-    /**
-     * @brief Đọc giá trị trạng thái từ bộ đệm.
-     * @param key Tên khóa cần kiểm tra (ví dụ: "is_empty").
-     * @param defaultValue Giá trị mặc định trả về.
-     * @return true/false tương ứng với trạng thái.
-     */
-    bool readBool(const char *key, bool defaultValue);
-
+    /** @brief Trả về số lượng bản ghi hiện có */
     int getCount();
+
+    /** @brief Kiểm tra bộ nhớ có trống hay không */
     bool isEmpty();
 };
 

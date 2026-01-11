@@ -1,20 +1,31 @@
-#ifndef PH_BSP_H
-#define PH_BSP_H
+#ifndef RAMSTORAGE_BSP_H
+#define RAMSTORAGE_BSP_H
 
-#include <SENSORS.h> // Chỉ giữ lại driver lọc của pH
+#include <RAMStorage.h>
 
-class PH_BSP {
+/**
+ * @class RAMStorage_BSP
+ * @brief Bộ điều phối (Orchestrator) lưu trữ dữ liệu Telemetry.
+ */
+class RAMStorage_BSP {
 private:
-    SENSORS* _filter;
-    uint8_t _pin;
-    float _slope;
-    float _offset;
+    RAMStorage* _driver;
 
 public:
-    PH_BSP(SENSORS* filterDriver, uint8_t pin = 34);
-    void begin();
-    float getPH(); // Chỉ trả về giá trị, không lưu trữ trong này
-    void setCalibration(float slope, float offset);
+    RAMStorage_BSP(RAMStorage* drv) : _driver(drv) {}
+
+    /** * @brief Đóng gói các giá trị cảm biến vào struct Telemetry và lưu vào RAM.
+     * @param ph Giá trị pH đã qua xử lý.
+     * @param temp Giá trị nhiệt độ.
+     */
+    void logTelemetry(float ph, float temp) {
+        TelemetryData data;
+        data.phValue = ph;
+        data.tempValue = temp;
+        data.timestamp = millis() / 1000;
+        
+        _driver->push(data); // Chuyển cho Driver thực hiện lưu trữ thô
+    }
 };
 
 #endif
