@@ -1,8 +1,8 @@
 #ifndef SYSTEM_CONTROLLER_H
 #define SYSTEM_CONTROLLER_H
 
-#include "../Middleware/Button/ButtonHandler.h"
-#include "../Middleware/Lcd/LcdHandler.h"
+#include "../middleware/Button/ButtonHandler.h"
+#include "../middleware/Lcd/LcdHandler.h"
 #include "../middleware/Potentiometer/PotHandler.h"
 
 /**

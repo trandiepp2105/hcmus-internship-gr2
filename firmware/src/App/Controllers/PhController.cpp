@@ -69,7 +69,7 @@ void PhController::readSensors() {
 
 void PhController::handleInputs() {
     // --- Button A: Mode Switching ---
-    if (_btnA->isPressed()) { // Assuming isPressed handles debounce and returns true once on press
+    if (_btnA->checkClicked()) { // Assuming isPressed handles debounce and returns true once on press
         Serial.println("[Input] Button A Pressed -> Changing Mode");
         switch (_context.systemMode) {
             case MODE_AUTO:
@@ -95,7 +95,7 @@ void PhController::handleInputs() {
     }
 
     // --- Button B: Action/Select ---
-    if (_btnB->isPressed()) {
+    if (_btnB->checkClicked()) {
         Serial.println("[Input] Button B Pressed");
         if (_context.systemMode == MODE_CONFIG) {
             // Cycle Config Pages
@@ -138,8 +138,8 @@ void PhController::runConfigLogic() {
     if (_context.configState == CFG_THRESHOLD) {
         // Map Potentiometer (0-4095 or 0-100%) to pH Range (0-14)
         // Using PotHandler to get percentage or raw? Assuming getPercentage() returns 0.0-1.0
-         float valUpper = _potUpper->getValue(); // 0-100
-         float valLower = _potLower->getValue(); // 0-100
+         float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
+         float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
          // Mapping 0-100 -> 0-14pH (Example)
          _config.phUpperLimit = (valUpper / 100.0f) * 14.0f;
