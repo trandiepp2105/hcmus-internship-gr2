@@ -55,6 +55,9 @@ void PhController::update() {
     // 3. Update Hardware
     updateOutputs();  // Relays
     updateDisplay();  // LCD
+    
+    // 4. Update Tracking State (Must be last)
+    _lastContext = _context;
 }
 
 void PhController::readSensors() {
@@ -223,10 +226,7 @@ void PhController::updateOutputs() {
         Serial.println();
     }
     
-    // Update Tracking State for NEXT loop
-    // Note: We copy the whole struct to track everything including Mode/Ph/Outputs.
-    // Doing it here covers logical updates from this loop iteration.
-    _lastContext = _context;
+    // Note: Tracking update moved to main update() loop
 }
 
 void PhController::stopAllActuators() {

@@ -7,8 +7,11 @@ LcdHandler::LcdHandler()
 }
 
 void LcdHandler::begin() {
+    Serial.println("[LcdHandler] Initializing LCD...");
     _lcd.init();
+    // _lcd.backlight(); // Ensure backlight specifically here too
     showStartup();
+    Serial.println("[LcdHandler] LCD Init Done.");
 }
 
 void LcdHandler::showStartup() {
