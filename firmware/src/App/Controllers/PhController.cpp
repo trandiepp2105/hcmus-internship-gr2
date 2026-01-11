@@ -175,6 +175,8 @@ void PhController::updateDisplay() {
     if (modeChanged || valueChanged || configStateChanged) {
         switch (_context.systemMode) {
             case MODE_AUTO:
+                _lcd->showValueScreen(_context.currentPh, _context.currentTemp);
+                break;
             case MODE_MANUAL:
                 // Show pH and Temp
                 // Note: Manual mode might need "MANUAL" text. Current Handler showValueScreen only shows pH/Temp.

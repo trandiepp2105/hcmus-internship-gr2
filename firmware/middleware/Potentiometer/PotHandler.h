@@ -5,7 +5,9 @@
 
 class PotHandler {
 public:
-    PotHandler(PotDriver* driver);
+    PotHandler(uint8_t pin);
+    // No begin necessary for Pot usually, but good practice if needed
+    
     /**
      * @brief Ánh xạ vị trí của biến trở sang một khoảng giá trị float.
      * @param minVal Giá trị nhỏ nhất (ví dụ: 0.0 cho pH).
@@ -15,8 +17,7 @@ public:
     float getScaledValue(float minVal, float maxVal);
 
 private:
-    PotDriver* _driver;
-    // Hàm hỗ trợ ánh xạ giá trị float 
+    PotDriver _driver;
     float mapFloat(float x, float in_min, float in_max, float out_min, float out_max);
 };
 
