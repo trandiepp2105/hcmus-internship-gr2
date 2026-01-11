@@ -1,25 +1,16 @@
-#include <STORAGE.h>
 #include "middleware/PH_BSP.h"
+#include "middleware/STORAGE_BSP.h"
+#include <SENSORS.h>
+#include <STORAGE.h>
 
-STORAGE ramDriver;
-PH_BSP phController(&ramDriver);
+SENSORS phFilter;
+STORAGE storageDriver;
 
-void setup()
-{
-  Serial.begin(115200);
-  Serial.println("System Layered Architecture Initialized.");
-}
+PH_BSP phSys(&phFilter);
+STORAGE_BSP storageSys(&storageDriver);
 
-void loop()
-{
-  // 1. Đọc dữ liệu từ BSP
-  float currentPH = phController.readPH();
-
-  // 2. Yêu cầu BSP lưu dữ liệu (BSP sẽ tự gọi Driver)
-  phController.saveData(currentPH);
-
-  Serial.printf("Current pH: %.2f | Records in RAM: %d\n",
-                currentPH, ramDriver.getCount());
-
-  delay(3000);
+void loop() {
+    float currentPH = phSys.getPH();      // Bước 1: Lấy dữ liệu từ pH
+    storageSys.saveData(currentPH);      // Bước 2: Đưa sang Storage để lưu
+    delay(2000);
 }
