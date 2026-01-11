@@ -148,6 +148,15 @@ void PhController::runConfigLogic() {
          
          _config.phUpperLimit = (valUpper / 100.0f) * 14.0f;
          _config.phLowerLimit = (valLower / 100.0f) * 14.0f;
+
+         // Log values only when they change (prevent spam)
+         static float lastUp = -1.0;
+         static float lastLow = -1.0;
+         if (abs(_config.phUpperLimit - lastUp) > 0.05 || abs(_config.phLowerLimit - lastLow) > 0.05) {
+             Serial.printf("[Config] Upper: %.2f | Lower: %.2f\n", _config.phUpperLimit, _config.phLowerLimit);
+             lastUp = _config.phUpperLimit;
+             lastLow = _config.phLowerLimit;
+         }
     }
 }
 
