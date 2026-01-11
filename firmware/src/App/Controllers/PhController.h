@@ -60,6 +60,7 @@ private:
     // Data Models
     PhConfig _config;
     PhContext _context;
+    PhContext _lastContext; // To track changes for optimization
 
     // --- Internal Logic Methods ---
 

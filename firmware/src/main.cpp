@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <Wire.h> // Include Wire explicitly for I2C
 
 // --- Libraries & Drivers ---
 #include <Storage.h>
@@ -41,8 +40,6 @@ void setup() {
     delay(1000);
     Serial.println("\n--- pH Controller Firmware Starting ---");
 
-    // 1. Init I2C (Important fix for LCD)
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
     
     // 2. Init Storage
     if (!storage.begin("ph_config", false)) {

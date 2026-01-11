@@ -32,10 +32,10 @@ struct PhContext {
     float currentTemp;
 
     // Outputs Status (True = ON, False = OFF)
-    bool output1; // Acid Pump
-    bool output2; // Base Pump
-    bool output3; // Mixer
-    bool output4; // Alarm/Aux
+    bool output1; // BASE PUMP
+    bool output2; // ACID PUMP
+    bool output3; // BASE PUMP
+    bool output4; // ACID PUMP
 
     // System State
     SystemMode systemMode;      // Chế độ hiện tại

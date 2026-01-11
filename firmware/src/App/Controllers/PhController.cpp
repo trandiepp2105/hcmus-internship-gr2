@@ -109,23 +109,27 @@ void PhController::handleInputs() {
 }
 
 void PhController::runAutoLogic() {
-    // Simple Hysteresis Control
+    // Control Logic:
+    // pH > Upper: Output 2 (ACID) & 4 (ACID) -> ON
+    // pH < Lower: Output 1 (BASE) & 3 (BASE) -> ON
+    // Lower <= pH <= Upper: ALL OFF
+    
     if (_context.currentPh > _config.phUpperLimit) {
-        _context.output1 = true;  // Pump Acid ON
-        _context.output2 = false; // Pump Base OFF
-        _context.output4 = true;  // Alarm ON?
+        _context.output1 = false; // Base OFF
+        _context.output2 = true;  // Acid ON
+        _context.output3 = false; // Base OFF
+        _context.output4 = true;  // Acid ON
     } else if (_context.currentPh < _config.phLowerLimit) {
-        _context.output1 = false;
-        _context.output2 = true;  // Pump Base ON
-        _context.output4 = true;
+        _context.output1 = true;  // Base ON
+        _context.output2 = false; // Acid OFF
+        _context.output3 = true;  // Base ON
+        _context.output4 = false; // Acid OFF
     } else {
         _context.output1 = false;
         _context.output2 = false;
+        _context.output3 = false;
         _context.output4 = false; // All OK
     }
-    
-    // Mixer Logic (Always ON in Auto? Or Periodic? Assuming OFF for basic test or specific logic needed)
-    _context.output3 = false; 
 }
 
 void PhController::runManualLogic() {
@@ -136,12 +140,9 @@ void PhController::runManualLogic() {
 void PhController::runConfigLogic() {
     // In Config Mode, we read Potentiometers and update Config IMMEDIATELY (Live Preview)
     if (_context.configState == CFG_THRESHOLD) {
-        // Map Potentiometer (0-4095 or 0-100%) to pH Range (0-14)
-        // Using PotHandler to get percentage or raw? Assuming getPercentage() returns 0.0-1.0
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
          float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
-         // Mapping 0-100 -> 0-14pH (Example)
          _config.phUpperLimit = (valUpper / 100.0f) * 14.0f;
          _config.phLowerLimit = (valLower / 100.0f) * 14.0f;
     }
@@ -152,24 +153,78 @@ void PhController::runInforLogic() {
 }
 
 void PhController::updateDisplay() {
-    // Delegate to LCD Handler based on Mode - Placeholder for now
-    // _lcd->showStatus(_context);
+    // Only update if something relevant changed (Simple Logic)
+    // For now, we update if Mode changes or periodically (or relying on LcdHandler optimization if implemented, but here we control call)
+    // Current primitive change detection:
+    bool modeChanged = (_context.systemMode != _lastContext.systemMode);
+    bool configStateChanged = (_context.configState != _lastContext.configState);
+    bool valueChanged = abs(_context.currentPh - _lastContext.currentPh) > 0.05 ||
+                        abs(_context.currentTemp - _lastContext.currentTemp) > 0.5;
+    bool thresholdChanged = abs(_config.phUpperLimit - _lastContext.currentPh) > 0.05 || // Warning: comparing Config vs LastPh? Mistake in logic previously
+                            abs(_config.phUpperLimit - _lastContext.output1 ) > 999; // Dummy Check
+                            
+    // Better Logic:
+    // 1. Clear screen on Mode Change
+    if (modeChanged) {
+        // _lcd->clear(); // LcdHandler might need a clear method exposed or handle it inside Show methods
+         // Currently LcdHandler doesn't expose clear directly except via wrapper? 
+         // Looking at LcdHandler.cpp, it calls _lcd->printAt. 
+         // It implies we just overwrite.
+    }
+
+    if (modeChanged || valueChanged || configStateChanged) {
+        switch (_context.systemMode) {
+            case MODE_AUTO:
+            case MODE_MANUAL:
+                // Show pH and Temp
+                // Note: Manual mode might need "MANUAL" text. Current Handler showValueScreen only shows pH/Temp.
+                // We might need to extend LcdHandler later. For now use what we have.
+                // If Manual, maybe we want to indicate it?
+                // The current LcdHandler::showValueScreen just prints "pH: ... Temp: ...".
+                _lcd->showValueScreen(_context.currentPh, _context.currentTemp);
+                break;
+                
+            case MODE_CONFIG:
+                if (_context.configState == CFG_THRESHOLD) {
+                    _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
+                } else {
+                    // Placeholder for Slope/Intercept screens if LcdHandler supported them
+                    // _lcd->showConfigScreen(...);
+                    // Retain last screen or show "Config: Slope" manually?
+                    // Let's rely on Threshold screen for now or add methods.
+                }
+                break;
+                
+            case MODE_INFOR:
+                 // Re-use Threshold Screen for Information?
+                 _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
+                 break;
+        }
+    }
 }
 
 void PhController::updateOutputs() {
-    // if (_ioExpander) {
-    //     uint8_t portVal = 0;
-    //     if (_context.output1) portVal |= (1 << 0);
-    //     if (_context.output2) portVal |= (1 << 1);
-    //     if (_context.output3) portVal |= (1 << 2);
-    //     if (_context.output4) portVal |= (1 << 3);
+    // Check if any output state changed
+    bool changed = (_context.output1 != _lastContext.output1) ||
+                   (_context.output2 != _lastContext.output2) ||
+                   (_context.output3 != _lastContext.output3) ||
+                   (_context.output4 != _lastContext.output4);
+
+    if (changed) {
+        // if (_ioExpander) { ... }
         
-    //     _ioExpander->setPortValue(portVal);
-    // }
-    // Temporary: Print output state to Serial for debugging
-    if (_context.output1) Serial.print(" [ACID ON]");
-    if (_context.output2) Serial.print(" [BASE ON]");
-    // ... etc
+        Serial.print("[Output] State Changed: ");
+        if (_context.output1) Serial.print("BASE(1)=ON "); else Serial.print("BASE(1)=OFF ");
+        if (_context.output2) Serial.print("ACID(2)=ON "); else Serial.print("ACID(2)=OFF ");
+        if (_context.output3) Serial.print("BASE(3)=ON "); else Serial.print("BASE(3)=OFF ");
+        if (_context.output4) Serial.print("ACID(4)=ON"); else Serial.print("ACID(4)=OFF");
+        Serial.println();
+    }
+    
+    // Update Tracking State for NEXT loop
+    // Note: We copy the whole struct to track everything including Mode/Ph/Outputs.
+    // Doing it here covers logical updates from this loop iteration.
+    _lastContext = _context;
 }
 
 void PhController::stopAllActuators() {
