@@ -11,6 +11,19 @@
 #include "../../middleware/Button/ButtonHandler.h"
 #include "../../middleware/Lcd/LcdHandler.h"
 #include "../../middleware/Potentiometer/PotHandler.h"
+#include "../../middleware/Sensor/TempSensorHandler.h"
+#include "../../middleware/Relay/RelayHandler.h"
+
+// ======== Configuration ========
+#define PH_SAMPLE_INTERVAL_MS 5000  // Read sensors every 5 seconds
+
+// Network Config
+#define WIFI_AP_NAME          "PH CONTROLLER SETUP"
+#define MQTT_SERVER           "192.168.100.13"  // Change to your server
+#define MQTT_PORT             1883
+#define TB_DEVICE_NAME        "PH_CONTROLLER_005"
+#define TB_PROVISION_KEY      "7b489653-2d36-45bd-9476-c7aa5b9ae5fc"    // Set your key
+#define TB_PROVISION_SECRET   "5BnZwv6WnuNbs6E45yNq" // Set your secret
 
 /**
  * @class PhController
@@ -35,7 +48,9 @@ public:
                  ButtonHandler* btnB,
                  LcdHandler* lcd,
                  PotHandler* potUpper,
-                 PotHandler* potLower);
+                 PotHandler* potLower,
+                 TempSensorHandler* tempSensor,
+                 RelayHandler* relayHandler);
 
     /**
      * @brief Khởi tạo hệ thống (Load config, Init hardware)
@@ -56,11 +71,15 @@ private:
     LcdHandler* _lcd;
     PotHandler* _potUpper;
     PotHandler* _potLower;
+    TempSensorHandler* _tempSensor;
+    RelayHandler* _relayHandler;
 
     // Data Models
     PhConfig _config;
     PhContext _context;
     PhContext _lastContext; // To track changes for optimization
+    unsigned long _lastSampleTime = 0; // For periodic sampling
+    bool _forceDisplayUpdate = true; // Force first update
 
     // --- Internal Logic Methods ---
 

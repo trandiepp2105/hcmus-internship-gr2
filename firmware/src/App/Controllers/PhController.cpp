@@ -7,14 +7,18 @@ PhController::PhController(Storage* storage,
                            ButtonHandler* btnB,
                            LcdHandler* lcd,
                            PotHandler* potUpper,
-                           PotHandler* potLower)
+                           PotHandler* potLower,
+                           TempSensorHandler* tempSensor,
+                           RelayHandler* relayHandler)
     : _storage(storage), 
       // _ioExpander(ioExpander), 
       _btnA(btnA), 
       _btnB(btnB), 
       _lcd(lcd), 
       _potUpper(potUpper), 
-      _potLower(potLower) {
+      _potLower(potLower),
+      _tempSensor(tempSensor),
+      _relayHandler(relayHandler) {
 }
 
 void PhController::begin() {
@@ -32,37 +36,71 @@ void PhController::begin() {
 }
 
 void PhController::update() {
-    // 1. Read Inputs
-    readSensors();
+    // 1. Handle Button Inputs (Always responsive)
     handleInputs();
 
-    // 2. State Machine Logic
+    // 2. Mode-specific Logic
     switch (_context.systemMode) {
         case MODE_AUTO:
-            runAutoLogic();
+            // Periodic Tasks - Every 5 Seconds
+            if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
+                _lastSampleTime = millis();
+                readSensors();
+                
+                // Log context
+                Serial.printf("[Context] pH=%.2f | Temp=%.1f | Mode=AUTO | Out=%d%d%d%d\n",
+                    _context.currentPh, _context.currentTemp,
+                    _context.output1, _context.output2, _context.output3, _context.output4);
+                
+                runAutoLogic();
+                updateOutputs();
+            }
             break;
+            
         case MODE_MANUAL:
-            runManualLogic();
+            // Periodic Tasks - Every 5 Seconds
+            if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
+                _lastSampleTime = millis();
+                readSensors();
+                
+                // Log context
+                Serial.printf("[Context] pH=%.2f | Temp=%.1f | Mode=MANUAL | Out=%d%d%d%d\n",
+                    _context.currentPh, _context.currentTemp,
+                    _context.output1, _context.output2, _context.output3, _context.output4);
+                
+                runManualLogic();
+                updateOutputs();
+            }
             break;
+            
         case MODE_CONFIG:
+            // Config Mode: Continuous potentiometer reading (no 5s delay)
             runConfigLogic();
             break;
+            
         case MODE_INFOR:
+            // Info Mode: Just display stored config (no sensor reading needed)
             runInforLogic();
             break;
     }
 
-    // 3. Update Hardware
-    updateOutputs();  // Relays
-    updateDisplay();  // LCD
+    // 3. Update Display (Always - handles its own change detection)
+    updateDisplay();  
     
     // 4. Update Tracking State (Must be last)
     _lastContext = _context;
 }
 
 void PhController::readSensors() {
-    // Read Temperature (Placeholder)
-    _context.currentTemp = 25.0f; // Replace with actual sensor reading
+    // Read Temperature (Real)
+    float t = _tempSensor->getTemperature();
+    // DS18B20 returns -127.0 if error (disconnected)
+    if (t > -100.0) {
+        _context.currentTemp = t;
+    } else {
+        // Keep last valid or set error flag? For now keep last valid or default 25
+        // _context.currentTemp = 25.0f; // Optional fallback
+    }
 
     // Read pH (Placeholder)
     // float rawAdc = analogRead(...);
@@ -161,58 +199,43 @@ void PhController::runConfigLogic() {
 }
 
 void PhController::runInforLogic() {
-    // Read-only, logic does nothing
+    // Logic for Info Mode
+    // The LCD update happens in updateDisplay().
+    // We can add a periodic log here to confirm values.
+    static unsigned long lastLog = 0;
+    if (millis() - lastLog > 2000) {
+        Serial.printf("[Info] Config in Memory: Upper=%.2f, Lower=%.2f\n", 
+                      _config.phUpperLimit, _config.phLowerLimit);
+        lastLog = millis();
+    }
 }
 
 void PhController::updateDisplay() {
-    // Only update if something relevant changed (Simple Logic)
-    // For now, we update if Mode changes or periodically (or relying on LcdHandler optimization if implemented, but here we control call)
-    // Current primitive change detection:
+    // Check if any relevant value changed
     bool modeChanged = (_context.systemMode != _lastContext.systemMode);
     bool configStateChanged = (_context.configState != _lastContext.configState);
-    bool valueChanged = abs(_context.currentPh - _lastContext.currentPh) > 0.05 ||
-                        abs(_context.currentTemp - _lastContext.currentTemp) > 0.5;
-    bool thresholdChanged = abs(_config.phUpperLimit - _lastContext.currentPh) > 0.05 || // Warning: comparing Config vs LastPh? Mistake in logic previously
-                            abs(_config.phUpperLimit - _lastContext.output1 ) > 999; // Dummy Check
-                            
-    // Better Logic:
-    // 1. Clear screen on Mode Change
-    if (modeChanged) {
-        // _lcd->clear(); // LcdHandler might need a clear method exposed or handle it inside Show methods
-         // Currently LcdHandler doesn't expose clear directly except via wrapper? 
-         // Looking at LcdHandler.cpp, it calls _lcd->printAt. 
-         // It implies we just overwrite.
-    }
-
-    if (modeChanged || valueChanged || configStateChanged) {
+    bool valueChanged = (abs(_context.currentPh - _lastContext.currentPh) > 0.01) ||
+                        (abs(_context.currentTemp - _lastContext.currentTemp) > 0.3);
+    
+    // Force update on first call, mode change, or value change
+    bool needUpdate = _forceDisplayUpdate || modeChanged || configStateChanged || valueChanged;
+    
+    if (needUpdate) {
+        _forceDisplayUpdate = false; // Clear force flag
+        
         switch (_context.systemMode) {
             case MODE_AUTO:
-                _lcd->showValueScreen(_context.currentPh, _context.currentTemp);
-                break;
             case MODE_MANUAL:
-                // Show pH and Temp
-                // Note: Manual mode might need "MANUAL" text. Current Handler showValueScreen only shows pH/Temp.
-                // We might need to extend LcdHandler later. For now use what we have.
-                // If Manual, maybe we want to indicate it?
-                // The current LcdHandler::showValueScreen just prints "pH: ... Temp: ...".
                 _lcd->showValueScreen(_context.currentPh, _context.currentTemp);
                 break;
                 
             case MODE_CONFIG:
-                if (_context.configState == CFG_THRESHOLD) {
-                    _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
-                } else {
-                    // Placeholder for Slope/Intercept screens if LcdHandler supported them
-                    // _lcd->showConfigScreen(...);
-                    // Retain last screen or show "Config: Slope" manually?
-                    // Let's rely on Threshold screen for now or add methods.
-                }
+                _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
                 break;
                 
             case MODE_INFOR:
-                 // Re-use Threshold Screen for Information?
-                 _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
-                 break;
+                _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
+                break;
         }
     }
 }
@@ -225,7 +248,18 @@ void PhController::updateOutputs() {
                    (_context.output4 != _lastContext.output4);
 
     if (changed) {
-        // if (_ioExpander) { ... }
+        // Build bitmask for 8-relay module (only use bits 0-3, bits 4-7 = 0)
+        uint8_t relayMask = 0;
+        if (_context.output1) relayMask |= 0x01;  // Bit 0 = Relay 1 (BASE)
+        if (_context.output2) relayMask |= 0x02;  // Bit 1 = Relay 2 (ACID)
+        if (_context.output3) relayMask |= 0x04;  // Bit 2 = Relay 3 (BASE)
+        if (_context.output4) relayMask |= 0x08;  // Bit 3 = Relay 4 (ACID)
+        // Bits 4-7 remain 0
+        
+        // Drive actual relays
+        if (_relayHandler) {
+            _relayHandler->setAllRelays(relayMask);
+        }
         
         Serial.print("[Output] State Changed: ");
         if (_context.output1) Serial.print("BASE(1)=ON "); else Serial.print("BASE(1)=OFF ");
