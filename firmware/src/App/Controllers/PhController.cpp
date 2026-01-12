@@ -105,7 +105,20 @@ void PhController::readSensors() {
     // Read pH (Placeholder)
     // float rawAdc = analogRead(...);
     // _context.currentPh = convertToPh(rawAdc, _config.calibSlope, _config.calibIntercept);
-    _context.currentPh = 7.05f; // Fake value for now
+    //_context.currentPh = 7.05f; // Fake value for now
+    //=====// ĐOẠN TEST GIÁ TRỊ pH RANDOM 4 MỨC //=====//
+    static int testStep = 0;
+    float testPhValues[4];
+    testPhValues[0] = _config.phLowerLimit - 0.5f; // Dưới ngưỡng lower
+    testPhValues[1] = _config.phLowerLimit + 0.5f; // Trong ngưỡng (gần lower)
+    testPhValues[2] = _config.phUpperLimit - 0.5f; // Trong ngưỡng (gần upper)
+    testPhValues[3] = _config.phUpperLimit + 0.5f; // Trên ngưỡng upper
+
+    _context.currentPh = testPhValues[testStep];
+    testStep = (testStep + 1) % 4;
+    //Serial.printf("//=====// TEST pH: %.2f //=====//\n", _context.currentPh);
+    //=====// KẾT THÚC ĐOẠN TEST //=====//
+
 }
 
 void PhController::handleInputs() {

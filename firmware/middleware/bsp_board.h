@@ -25,9 +25,9 @@
     #define PIN_TEMP_SENSOR 15  // DS18B20 Data Pin
     
     // 74HC595 Shift Register (Relay Control)
-    #define PIN_SR_DATA     25  // DS (Serial Data)
-    #define PIN_SR_CLOCK    26  // SHCP (Shift Clock)
-    #define PIN_SR_LATCH    27  // STCP (Latch)
+    #define PIN_SR_DATA     35  // DS (Serial Data)
+    #define PIN_SR_CLOCK    33  // SHCP (Shift Clock)
+    #define PIN_SR_LATCH    32  // STCP (Latch)
 
 #elif defined(ESP8266)
     // --- ESP8266 Configuration ---
