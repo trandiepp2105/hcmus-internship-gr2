@@ -179,21 +179,29 @@ void PhController::runManualLogic() {
 }
 
 void PhController::runConfigLogic() {
-    // In Config Mode, we read Potentiometers and update Config IMMEDIATELY (Live Preview)
+    // In Config Mode, we read Potentiometers and update Config at 0.5 increments only
     if (_context.configState == CFG_THRESHOLD) {
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
          float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
-         _config.phUpperLimit = (valUpper / 100.0f) * 14.0f;
-         _config.phLowerLimit = (valLower / 100.0f) * 14.0f;
-
-         // Log values only when they change (prevent spam)
+         // Map to pH range 0-14, then snap to nearest 0.5
+         float rawUpper = (valUpper / 100.0f) * 14.0f;
+         float rawLower = (valLower / 100.0f) * 14.0f;
+         
+         // Snap to 0.5 increments: round(value * 2) / 2
+         float snappedUpper = round(rawUpper * 2.0f) / 2.0f;
+         float snappedLower = round(rawLower * 2.0f) / 2.0f;
+         
+         // Only update and log if value changed to a new 0.5 step
          static float lastUp = -1.0;
          static float lastLow = -1.0;
-         if (abs(_config.phUpperLimit - lastUp) > 0.05 || abs(_config.phLowerLimit - lastLow) > 0.05) {
-             Serial.printf("[Config] Upper: %.2f | Lower: %.2f\n", _config.phUpperLimit, _config.phLowerLimit);
-             lastUp = _config.phUpperLimit;
-             lastLow = _config.phLowerLimit;
+         
+         if (snappedUpper != lastUp || snappedLower != lastLow) {
+             _config.phUpperLimit = snappedUpper;
+             _config.phLowerLimit = snappedLower;
+             Serial.printf("[Config] Upper: %.1f | Lower: %.1f\n", snappedUpper, snappedLower);
+             lastUp = snappedUpper;
+             lastLow = snappedLower;
          }
     }
 }
