@@ -179,20 +179,45 @@ void PhController::runManualLogic() {
 }
 
 void PhController::runConfigLogic() {
-    // In Config Mode, we read Potentiometers and update Config at 0.5 increments only
+    // In Config Mode, we read Potentiometers and update Config only at X.0/X.5 milestones
     if (_context.configState == CFG_THRESHOLD) {
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
          float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
-         // Map to pH range 0-14, then snap to nearest 0.5
+         // Hysteresis: Only process if raw value changed significantly (reduce noise)
+         static float lastRawUpper = -100.0;
+         static float lastRawLower = -100.0;
+         const float HYSTERESIS = 2.0; // Deadzone ~2% of pot range
+         
+         bool rawChanged = (abs(valUpper - lastRawUpper) > HYSTERESIS) ||
+                          (abs(valLower - lastRawLower) > HYSTERESIS);
+         
+         if (!rawChanged) return; // Skip if noise only
+         
+         lastRawUpper = valUpper;
+         lastRawLower = valLower;
+         
+         // Map to pH range 0-14
          float rawUpper = (valUpper / 100.0f) * 14.0f;
          float rawLower = (valLower / 100.0f) * 14.0f;
          
-         // Snap to 0.5 increments: round(value * 2) / 2
-         float snappedUpper = round(rawUpper * 2.0f) / 2.0f;
-         float snappedLower = round(rawLower * 2.0f) / 2.0f;
+         // Round to 2 decimal places
+         float roundedUpper = round(rawUpper * 100.0f) / 100.0f;
+         float roundedLower = round(rawLower * 100.0f) / 100.0f;
          
-         // Only update and log if value changed to a new 0.5 step
+         // Check if value is exactly X.0 or X.5 (tolerance 0.01)
+         float fracUpper = fmod(roundedUpper, 0.5f);
+         float fracLower = fmod(roundedLower, 0.5f);
+         bool upperIsMilestone = (fracUpper < 0.02f) || (fracUpper > 0.48f);
+         bool lowerIsMilestone = (fracLower < 0.02f) || (fracLower > 0.48f);
+         
+         if (!upperIsMilestone && !lowerIsMilestone) return; // Not at milestone yet
+         
+         // Snap to exact X.0 or X.5 if at milestone
+         float snappedUpper = upperIsMilestone ? (round(roundedUpper * 2.0f) / 2.0f) : _config.phUpperLimit;
+         float snappedLower = lowerIsMilestone ? (round(roundedLower * 2.0f) / 2.0f) : _config.phLowerLimit;
+         
+         // Only update and log if value changed
          static float lastUp = -1.0;
          static float lastLow = -1.0;
          
