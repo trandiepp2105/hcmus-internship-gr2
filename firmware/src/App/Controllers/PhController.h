@@ -15,22 +15,23 @@
 #include "../../middleware/Relay/RelayHandler.h"
 
 // ======== Configuration ========
-#define PH_SAMPLE_INTERVAL_MS 5000  // Read sensors every 5 seconds
+#define PH_SAMPLE_INTERVAL_MS 5000 // Read sensors every 5 seconds
 
 // Network Config
-#define WIFI_AP_NAME          "PH CONTROLLER SETUP"
-#define MQTT_SERVER           "192.168.100.13"  // Change to your server
-#define MQTT_PORT             1883
-#define TB_DEVICE_NAME        "PH_CONTROLLER_005"
-#define TB_PROVISION_KEY      "7b489653-2d36-45bd-9476-c7aa5b9ae5fc"    // Set your key
-#define TB_PROVISION_SECRET   "5BnZwv6WnuNbs6E45yNq" // Set your secret
+#define WIFI_AP_NAME "PH CONTROLLER SETUP"
+#define MQTT_SERVER "192.168.100.13" // Change to your server
+#define MQTT_PORT 1883
+#define TB_DEVICE_NAME "PH_CONTROLLER_005"
+#define TB_PROVISION_KEY "7b489653-2d36-45bd-9476-c7aa5b9ae5fc" // Set your key
+#define TB_PROVISION_SECRET "5BnZwv6WnuNbs6E45yNq"              // Set your secret
 
 /**
  * @class PhController
  * @brief Lớp điều khiển chính của ứng dụng pH Controller.
  * Quản lý trạng thái hệ thống, đọc cảm biến, xử lý logic và điều khiển ngõ ra.
  */
-class PhController {
+class PhController
+{
 public:
     /**
      * @brief Constructor
@@ -42,15 +43,15 @@ public:
      * @param potUpper Biến trở chỉnh ngưỡng trên
      * @param potLower Biến trở chỉnh ngưỡng dưới
      */
-    PhController(Storage* storage, 
+    PhController(Storage *storage,
                  // IOExpanderBSP* ioExpander,
-                 ButtonHandler* btnA, 
-                 ButtonHandler* btnB,
-                 LcdHandler* lcd,
-                 PotHandler* potUpper,
-                 PotHandler* potLower,
-                 TempSensorHandler* tempSensor,
-                 RelayHandler* relayHandler);
+                 ButtonHandler *btnA,
+                 ButtonHandler *btnB,
+                 LcdHandler *lcd,
+                 PotHandler *potUpper,
+                 PotHandler *potLower,
+                 TempSensorHandler *tempSensor,
+                 RelayHandler *relayHandler);
 
     /**
      * @brief Khởi tạo hệ thống (Load config, Init hardware)
@@ -64,22 +65,22 @@ public:
 
 private:
     // Dependencies
-    Storage* _storage;
+    Storage *_storage;
     // IOExpanderBSP* _ioExpander;
-    ButtonHandler* _btnA;
-    ButtonHandler* _btnB;
-    LcdHandler* _lcd;
-    PotHandler* _potUpper;
-    PotHandler* _potLower;
-    TempSensorHandler* _tempSensor;
-    RelayHandler* _relayHandler;
+    ButtonHandler *_btnA;
+    ButtonHandler *_btnB;
+    LcdHandler *_lcd;
+    PotHandler *_potUpper;
+    PotHandler *_potLower;
+    TempSensorHandler *_tempSensor;
+    RelayHandler *_relayHandler;
 
     // Data Models
     PhConfig _config;
     PhContext _context;
-    PhContext _lastContext; // To track changes for optimization
+    PhContext _lastContext;            // To track changes for optimization
     unsigned long _lastSampleTime = 0; // For periodic sampling
-    bool _forceDisplayUpdate = true; // Force first update
+    bool _forceDisplayUpdate = true;   // Force first update
 
     // --- Internal Logic Methods ---
 
