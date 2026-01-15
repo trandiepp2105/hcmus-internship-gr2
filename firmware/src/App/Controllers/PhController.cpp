@@ -35,6 +35,25 @@ void PhController::begin() {
     Serial.println("[PhController] Started.");
 }
 
+void PhController::testLcd() {
+    static int counter = 0;
+    static unsigned long lastUpdate = 0;
+    
+    // Update every 2 seconds
+    if (millis() - lastUpdate >= 2000) {
+        lastUpdate = millis();
+        
+        float testPh = 7.0 + (counter % 10) * 0.5;
+        float testTemp = 25.0 + (counter % 5);
+        
+        // Use new API with test output states
+        _lcd->showAutoManualScreen(testPh, testTemp, false, false, false, false, true);
+        Serial.printf("[LCD Test] pH=%.1f | Temp=%.1f\n", testPh, testTemp);
+        
+        counter++;
+    }
+}
+
 void PhController::update() {
     // 1. Handle Button Inputs (Always responsive)
     handleInputs();
@@ -102,10 +121,71 @@ void PhController::readSensors() {
         // _context.currentTemp = 25.0f; // Optional fallback
     }
 
-    // Read pH (Placeholder)
-    // float rawAdc = analogRead(...);
-    // _context.currentPh = convertToPh(rawAdc, _config.calibSlope, _config.calibIntercept);
-    _context.currentPh = 7.05f; // Fake value for now
+    // --- Simulated pH Pattern ---
+    // Cycle: Phase 0 (below lower, rising) -> Phase 1 (in range) 
+    //     -> Phase 2 (above upper, falling) -> Phase 3 (in range) -> repeat
+    static int sampleIndex = 0;
+    const int SAMPLES_PER_PHASE = 5;
+    const int TOTAL_PHASES = 4;
+    const int TOTAL_SAMPLES = SAMPLES_PER_PHASE * TOTAL_PHASES; // 20 samples per cycle
+    
+    int phase = (sampleIndex / SAMPLES_PER_PHASE) % TOTAL_PHASES;
+    int stepInPhase = sampleIndex % SAMPLES_PER_PHASE; // 0-4
+    
+    float lower = _config.phLowerLimit;
+    float upper = _config.phUpperLimit;
+    float midpoint = (lower + upper) / 2.0f;
+    
+    float phValue = midpoint; // Default fallback
+    
+    switch (phase) {
+        case 0: {
+            // Phase 0: Below lower threshold, rising toward lower (but not reaching)
+            // Start at lower - 1.5, end at lower - 0.3
+            float startPh = lower - 1.5f;
+            float endPh = lower - 0.3f;
+            phValue = startPh + (endPh - startPh) * (stepInPhase / 4.0f);
+            break;
+        }
+        case 1: {
+            // Phase 1: Within range (lower to upper)
+            // Smooth transition from near lower to midpoint
+            float startPh = lower + 0.2f;
+            float endPh = midpoint + 0.3f;
+            phValue = startPh + (endPh - startPh) * (stepInPhase / 4.0f);
+            break;
+        }
+        case 2: {
+            // Phase 2: Above upper threshold, falling toward upper (but not reaching)
+            // Start at upper + 1.5, end at upper + 0.3
+            float startPh = upper + 1.5f;
+            float endPh = upper + 0.3f;
+            phValue = startPh + (endPh - startPh) * (stepInPhase / 4.0f);
+            break;
+        }
+        case 3: {
+            // Phase 3: Within range (back in normal zone)
+            // Smooth transition from near upper to midpoint
+            float startPh = upper - 0.2f;
+            float endPh = midpoint - 0.3f;
+            phValue = startPh + (endPh - startPh) * (stepInPhase / 4.0f);
+            break;
+        }
+    }
+    
+    // Clamp to valid pH range (0-14)
+    if (phValue < 0.0f) phValue = 0.0f;
+    if (phValue > 14.0f) phValue = 14.0f;
+    
+    _context.currentPh = phValue;
+    
+    // // Log phase info for debugging
+    // const char* phaseNames[] = {"BELOW_LOWER", "IN_RANGE_1", "ABOVE_UPPER", "IN_RANGE_2"};
+    // Serial.printf("[Sensor] Sample %d | Phase: %s | Step: %d | pH: %.2f\n", 
+    //               sampleIndex, phaseNames[phase], stepInPhase, phValue);
+    
+    // Advance to next sample (wrap around)
+    sampleIndex = (sampleIndex + 1) % TOTAL_SAMPLES;
 }
 
 void PhController::handleInputs() {
@@ -179,54 +259,39 @@ void PhController::runManualLogic() {
 }
 
 void PhController::runConfigLogic() {
-    // In Config Mode, we read Potentiometers and update Config only at X.0/X.5 milestones
+    // In Config Mode, we read Upper Potentiometer only
+    // Lower threshold is fixed at 4.5
+    // Upper is always snapped to nearest 0.5 milestone
     if (_context.configState == CFG_THRESHOLD) {
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
-         float valLower = _potLower->getScaledValue(0, 100); // 0-100
-         
-         // Hysteresis: Only process if raw value changed significantly (reduce noise)
-         static float lastRawUpper = -100.0;
-         static float lastRawLower = -100.0;
-         const float HYSTERESIS = 2.0; // Deadzone ~2% of pot range
-         
-         bool rawChanged = (abs(valUpper - lastRawUpper) > HYSTERESIS) ||
-                          (abs(valLower - lastRawLower) > HYSTERESIS);
-         
-         if (!rawChanged) return; // Skip if noise only
-         
-         lastRawUpper = valUpper;
-         lastRawLower = valLower;
          
          // Map to pH range 0-14
          float rawUpper = (valUpper / 100.0f) * 14.0f;
-         float rawLower = (valLower / 100.0f) * 14.0f;
          
-         // Round to 2 decimal places
-         float roundedUpper = round(rawUpper * 100.0f) / 100.0f;
-         float roundedLower = round(rawLower * 100.0f) / 100.0f;
+         // Always snap to nearest 0.5 milestone (0.0, 0.5, 1.0, 1.5, ...)
+         float snappedUpper = round(rawUpper * 2.0f) / 2.0f;
          
-         // Check if value is exactly X.0 or X.5 (tolerance 0.01)
-         float fracUpper = fmod(roundedUpper, 0.5f);
-         float fracLower = fmod(roundedLower, 0.5f);
-         bool upperIsMilestone = (fracUpper < 0.02f) || (fracUpper > 0.48f);
-         bool lowerIsMilestone = (fracLower < 0.02f) || (fracLower > 0.48f);
+         // Fixed lower threshold
+         const float FIXED_LOWER = 4.5f;
+         const float MIN_GAP = 0.5f; // Minimum gap between upper and lower
          
-         if (!upperIsMilestone && !lowerIsMilestone) return; // Not at milestone yet
+         // Enforce upper >= lower + MIN_GAP
+         float minUpper = FIXED_LOWER + MIN_GAP;
+         if (snappedUpper < minUpper) {
+             snappedUpper = minUpper;
+         }
          
-         // Snap to exact X.0 or X.5 if at milestone
-         float snappedUpper = upperIsMilestone ? (round(roundedUpper * 2.0f) / 2.0f) : _config.phUpperLimit;
-         float snappedLower = lowerIsMilestone ? (round(roundedLower * 2.0f) / 2.0f) : _config.phLowerLimit;
+         // Clamp to valid pH range
+         if (snappedUpper > 14.0f) snappedUpper = 14.0f;
          
          // Only update and log if value changed
          static float lastUp = -1.0;
-         static float lastLow = -1.0;
          
-         if (snappedUpper != lastUp || snappedLower != lastLow) {
+         if (snappedUpper != lastUp) {
              _config.phUpperLimit = snappedUpper;
-             _config.phLowerLimit = snappedLower;
-             Serial.printf("[Config] Upper: %.1f | Lower: %.1f\n", snappedUpper, snappedLower);
+             _config.phLowerLimit = FIXED_LOWER;
+             Serial.printf("[Config] Upper: %.1f | Lower: %.1f (fixed)\n", snappedUpper, FIXED_LOWER);
              lastUp = snappedUpper;
-             lastLow = snappedLower;
          }
     }
 }
@@ -249,25 +314,61 @@ void PhController::updateDisplay() {
     bool configStateChanged = (_context.configState != _lastContext.configState);
     bool valueChanged = (abs(_context.currentPh - _lastContext.currentPh) > 0.01) ||
                         (abs(_context.currentTemp - _lastContext.currentTemp) > 0.3);
+    bool outputChanged = (_context.output1 != _lastContext.output1) ||
+                         (_context.output2 != _lastContext.output2) ||
+                         (_context.output3 != _lastContext.output3) ||
+                         (_context.output4 != _lastContext.output4);
     
-    // Force update on first call, mode change, or value change
-    bool needUpdate = _forceDisplayUpdate || modeChanged || configStateChanged || valueChanged;
+    // Force update on first call, mode change, value change, or output change
+    bool needUpdate = _forceDisplayUpdate || modeChanged || configStateChanged || valueChanged || outputChanged;
+    
+    // For INFO mode, always update (it cycles pages internally)
+    if (_context.systemMode == MODE_INFOR) {
+        needUpdate = true;
+    }
+    
+    // For CONFIG mode, always update (config values may change continuously)
+    if (_context.systemMode == MODE_CONFIG) {
+        needUpdate = true;
+    }
     
     if (needUpdate) {
         _forceDisplayUpdate = false; // Clear force flag
         
         switch (_context.systemMode) {
             case MODE_AUTO:
+                _lcd->showAutoManualScreen(
+                    _context.currentPh, _context.currentTemp,
+                    _context.output1, _context.output2, _context.output3, _context.output4,
+                    true  // isAuto = true
+                );
+                break;
+                
             case MODE_MANUAL:
-                _lcd->showValueScreen(_context.currentPh, _context.currentTemp);
+                _lcd->showAutoManualScreen(
+                    _context.currentPh, _context.currentTemp,
+                    _context.output1, _context.output2, _context.output3, _context.output4,
+                    false  // isAuto = false
+                );
                 break;
                 
             case MODE_CONFIG:
-                _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
+                switch (_context.configState) {
+                    case CFG_THRESHOLD:
+                        _lcd->showConfigScreen(CFG_THRESHOLD, _config.phUpperLimit, _config.phLowerLimit);
+                        break;
+                    case CFG_SLOPE:
+                        _lcd->showConfigScreen(CFG_SLOPE, _config.calibSlope, 0);
+                        break;
+                    case CFG_INTERCEPT:
+                        _lcd->showConfigScreen(CFG_INTERCEPT, _config.calibIntercept, 0);
+                        break;
+                }
                 break;
                 
             case MODE_INFOR:
-                _lcd->showThresholdScreen(_config.phUpperLimit, _config.phLowerLimit);
+                _lcd->showInfoScreen(_config.phUpperLimit, _config.phLowerLimit, 
+                                     _config.calibSlope, _config.calibIntercept);
                 break;
         }
     }

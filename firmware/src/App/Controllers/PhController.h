@@ -62,6 +62,11 @@ public:
      */
     void update();
 
+    /**
+     * @brief Test LCD display with incrementing values
+     */
+    void testLcd();
+
 private:
     // Dependencies
     Storage* _storage;
