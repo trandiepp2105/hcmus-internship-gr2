@@ -8,18 +8,21 @@
 #define LCD_COLS        16
 #define LCD_ROWS        2
 
+// WiFi Configuration
+#define WIFI_RECONNECT_TIMEOUT_MS  60000  // 60 seconds before opening portal
+
 #ifdef ESP32
     // --- ESP32 Configuration ---
     #define PIN_I2C_SDA     21
     #define PIN_I2C_SCL     22
     
     // Potentiometers (ADC Input)
-    #define PIN_POT_UPPER   36  // Analog pin for Upper Threshold
-    #define PIN_POT_LOWER   39  // Analog pin for Lower Threshold
+    #define PIN_POT_UPPER   35  // Analog pin for Upper Threshold
+    #define PIN_POT_LOWER   32  // Analog pin for Lower Threshold
     
     // Buttons  
-    #define PIN_BTN_A       0   // Mode Button
-    #define PIN_BTN_B       34   // Action/Select Button
+    #define PIN_BTN_A       18   // Mode Button
+    #define PIN_BTN_B       19   // Action/Select Button
     
     // Temperature Sensor
     #define PIN_TEMP_SENSOR 15  // DS18B20 Data Pin
