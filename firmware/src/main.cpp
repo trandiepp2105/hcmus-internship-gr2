@@ -49,20 +49,31 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\n--- pH Controller Firmware Starting ---");
 
-
     // 2. Init Middleware/BSP
     if (!storage.begin("ph_config", false)) {
          Serial.println("Storage Init Failed");
     }
-    
+    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+
+    // I2C Scanner - Find LCD address
+    Serial.println("[I2C] Scanning for devices...");
+    for (byte addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("[I2C] Found device at 0x%02X\n", addr);
+        }
+    }
+    Serial.println("[I2C] Scan complete.");
+
     lcd.begin(); // Init LCD Driver
     btnA.begin(); // Init Button Driver
     btnB.begin();
     tempSensor.begin(); // Init DS18B20
     relays.begin(); // Init 74HC595 Relay Controller
     // Pot doesn't need begin currently
-
     // 3. Init Network
+    // wifi.resetSettings();
+
     wifi.begin(WIFI_AP_NAME);
     mqtt.begin(MQTT_SERVER, MQTT_PORT);
     mqtt.checkAndProvision(TB_DEVICE_NAME, TB_PROVISION_KEY, TB_PROVISION_SECRET);
@@ -72,6 +83,9 @@ void setup() {
 }
 
 void loop() {
+    // WiFi maintenance (auto-reconnect, portal handling)
+    wifi.update();
+    
     // Network maintenance
     mqtt.update(TB_DEVICE_NAME);
     
