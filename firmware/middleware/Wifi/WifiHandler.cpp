@@ -8,6 +8,22 @@ void WifiHandler::begin(const char* apName) {
     _driver.init(apName, NULL);
 }
 
+void WifiHandler::update() {
+    _driver.update(WIFI_RECONNECT_TIMEOUT_MS);
+}
+
+void WifiHandler::startPortal() {
+    _driver.startPortal();
+}
+
+void WifiHandler::stopPortal() {
+    _driver.stopPortal();
+}
+
+bool WifiHandler::isPortalActive() {
+    return _driver.isPortalActive();
+}
+
 bool WifiHandler::isConnected() {
     return _driver.isConnected();
 }
