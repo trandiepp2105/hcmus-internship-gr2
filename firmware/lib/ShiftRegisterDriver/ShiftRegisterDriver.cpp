@@ -19,22 +19,11 @@ void ShiftRegisterDriver::shiftOut() {
     // Hold latch LOW while shifting
     digitalWrite(_latchPin, LOW);
     
-    // Shift out each bit (MSB first or LSB first depends on wiring)
-    // Using MSBFIRST: Bit 7 goes to Q7, Bit 0 goes to Q0
-    for (int i = 7; i >= 0; i--) {
-        // Set data pin
-        digitalWrite(_dataPin, (_currentState >> i) & 0x01);
-        
-        // Pulse clock
-        digitalWrite(_clockPin, HIGH);
-        delayMicroseconds(1);  // Small delay for stability
-        digitalWrite(_clockPin, LOW);
-    }
+    // Use Arduino's built-in shiftOut function (MSBFIRST: Bit 7 goes to Q7)
+    ::shiftOut(_dataPin, _clockPin, MSBFIRST, _currentState);
     
     // Latch: Transfer shift register to output register
     digitalWrite(_latchPin, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(_latchPin, LOW);
 }
 
 void ShiftRegisterDriver::write(uint8_t data) {
