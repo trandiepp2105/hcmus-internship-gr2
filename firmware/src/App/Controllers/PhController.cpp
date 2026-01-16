@@ -259,39 +259,41 @@ void PhController::runManualLogic() {
 }
 
 void PhController::runConfigLogic() {
-    // In Config Mode, we read Upper Potentiometer only
-    // Lower threshold is fixed at 4.5
-    // Upper is always snapped to nearest 0.5 milestone
+    // In Config Mode, we read both Upper and Lower Potentiometers
+    // Both values are snapped to nearest 0.5 milestone
     if (_context.configState == CFG_THRESHOLD) {
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
+         float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
          // Map to pH range 0-14
          float rawUpper = (valUpper / 100.0f) * 14.0f;
+         float rawLower = (valLower / 100.0f) * 14.0f;
          
          // Always snap to nearest 0.5 milestone (0.0, 0.5, 1.0, 1.5, ...)
          float snappedUpper = round(rawUpper * 2.0f) / 2.0f;
+         float snappedLower = round(rawLower * 2.0f) / 2.0f;
          
-         // Fixed lower threshold
-         const float FIXED_LOWER = 4.5f;
          const float MIN_GAP = 0.5f; // Minimum gap between upper and lower
          
          // Enforce upper >= lower + MIN_GAP
-         float minUpper = FIXED_LOWER + MIN_GAP;
-         if (snappedUpper < minUpper) {
-             snappedUpper = minUpper;
+         if (snappedUpper < snappedLower + MIN_GAP) {
+             snappedUpper = snappedLower + MIN_GAP;
          }
          
          // Clamp to valid pH range
+         if (snappedLower < 0.0f) snappedLower = 0.0f;
          if (snappedUpper > 14.0f) snappedUpper = 14.0f;
          
          // Only update and log if value changed
          static float lastUp = -1.0;
+         static float lastLow = -1.0;
          
-         if (snappedUpper != lastUp) {
+         if (snappedUpper != lastUp || snappedLower != lastLow) {
              _config.phUpperLimit = snappedUpper;
-             _config.phLowerLimit = FIXED_LOWER;
-             Serial.printf("[Config] Upper: %.1f | Lower: %.1f (fixed)\n", snappedUpper, FIXED_LOWER);
+             _config.phLowerLimit = snappedLower;
+             Serial.printf("[Config] Upper: %.1f | Lower: %.1f\n", snappedUpper, snappedLower);
              lastUp = snappedUpper;
+             lastLow = snappedLower;
          }
     }
 }
