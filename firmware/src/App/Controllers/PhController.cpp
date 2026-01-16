@@ -318,14 +318,6 @@ void PhController::runConfigLogic() {
     }
     else if (_context.configState == CFG_INTERCEPT) {
         Serial.println("[Config] Intercept configuration via pot not implemented yet.");
-         
-         if (snappedUpper != lastUp || snappedLower != lastLow) {
-             _config.phUpperLimit = snappedUpper;
-             _config.phLowerLimit = snappedLower;
-             Serial.printf("[Config] Upper: %.1f | Lower: %.1f\n", snappedUpper, snappedLower);
-             lastUp = snappedUpper;
-             lastLow = snappedLower;
-         }
     }
 }
 
