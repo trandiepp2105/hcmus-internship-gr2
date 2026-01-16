@@ -100,7 +100,8 @@ void MqttHandler::checkAndProvision(const char* deviceName, const char* provisio
         if (runProvisioning(deviceName, provisionKey, provisionSecret)) {
             Serial.println("[MQTT] Provisioning successful!");
         } else {
-            Serial.println("[MQTT] Provisioning failed!");
+            Serial.println("[MQTT] Provisioning failed!, rc= " + String(_driver.getState()));
+            
         }
     } else {
         Serial.println("[MQTT] Token exists, skipping provisioning.");
@@ -124,25 +125,37 @@ bool MqttHandler::pushTelemetry(const TelemetryRecord& record) {
     return pushTelemetry(record.ph, record.temp, record.outputs, record.mode, record.errorCode);
 }
 
+
+
 bool MqttHandler::pushTelemetry(float ph, float temp, uint8_t outputs, uint8_t mode, uint8_t errorCode) {
     if (!_driver.isConnected()) return false;
     
+    // Create JSON document matching the logic in original MqttModule.cpp
     JsonDocument doc;
-    doc["ph_value"] = (float)((int)(ph * 100 + 0.5)) / 100.0; // Round to 2 decimals
+    
+    // Format pH to 2 decimal places as seen in original code
+    doc["ph_value"] = (float)((int)(ph * 100 + 0.5)) / 100.0; 
     doc["temperature"] = temp;
+    
+    // Map relay status from mask
     doc["out_1_status"] = (outputs & 0x01) != 0;
     doc["out_2_status"] = (outputs & 0x02) != 0;
     doc["out_3_status"] = (outputs & 0x04) != 0;
     doc["out_4_status"] = (outputs & 0x08) != 0;
+    
+    // Additional logic from your new architecture
     doc["control_mode"] = (mode == 0) ? "AUTO" : "MANUAL";
     doc["error_code"] = errorCode;
     
     char buffer[256];
     serializeJson(doc, buffer);
     
+    // Original MqttModule used "v1/devices/me/telemetry"
+    // Ensure TB_TOPIC_TELEMETRY is defined as "v1/devices/me/telemetry"
     bool result = _driver.publish(TB_TOPIC_TELEMETRY, buffer);
+    
     if (result) {
-        Serial.println("[MQTT] Telemetry sent.");
+        Serial.println("[MQTT] Telemetry sent successfully.");
     }
     return result;
 }

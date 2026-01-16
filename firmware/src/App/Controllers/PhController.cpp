@@ -9,7 +9,8 @@ PhController::PhController(Storage* storage,
                            PotHandler* potUpper,
                            PotHandler* potLower,
                            TempSensorHandler* tempSensor,
-                           RelayHandler* relayHandler)
+                           RelayHandler* relayHandler,
+                           MqttHandler* mqttHandler)
     : _storage(storage), 
       // _ioExpander(ioExpander), 
       _btnA(btnA), 
@@ -18,7 +19,8 @@ PhController::PhController(Storage* storage,
       _potUpper(potUpper), 
       _potLower(potLower),
       _tempSensor(tempSensor),
-      _relayHandler(relayHandler) {
+      _relayHandler(relayHandler),
+      _mqttHandler(mqttHandler) {
 }
 
 void PhController::begin() {
@@ -46,7 +48,22 @@ void PhController::update() {
             if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
                 _lastSampleTime = millis();
                 readSensors();
-                
+
+                if (_mqttHandler && _mqttHandler->isConnected()) {
+                    uint8_t relayMask = 0;
+                    if (_context.output1) relayMask |= 0x01;
+                    if (_context.output2) relayMask |= 0x02;
+                    if (_context.output3) relayMask |= 0x04;
+                    if (_context.output4) relayMask |= 0x08;
+
+                    // Sending data to Middleware
+                    _mqttHandler->pushTelemetry(
+                        _context.currentPh, 
+                        _context.currentTemp, 
+                        relayMask, 
+                        _context.systemMode, 
+                        0 // errorCode
+                    );
                 // Log context
                 Serial.printf("[Context] pH=%.2f | Temp=%.1f | Mode=AUTO | Out=%d%d%d%d\n",
                     _context.currentPh, _context.currentTemp,
@@ -56,7 +73,7 @@ void PhController::update() {
                 updateOutputs();
             }
             break;
-            
+        }
         case MODE_MANUAL:
             // Periodic Tasks - Every 5 Seconds
             if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
@@ -192,22 +209,61 @@ void PhController::runManualLogic() {
 }
 
 void PhController::runConfigLogic() {
-    // In Config Mode, we read Potentiometers and update Config IMMEDIATELY (Live Preview)
+    // In Config Mode, we read Potentiometers and update Config only at X.0/X.5 milestones
     if (_context.configState == CFG_THRESHOLD) {
          float valUpper = _potUpper->getScaledValue(0, 100); // 0-100
          float valLower = _potLower->getScaledValue(0, 100); // 0-100
          
-         _config.phUpperLimit = (valUpper / 100.0f) * 14.0f;
-         _config.phLowerLimit = (valLower / 100.0f) * 14.0f;
-
-         // Log values only when they change (prevent spam)
+         // Hysteresis: Only process if raw value changed significantly (reduce noise)
+         static float lastRawUpper = -100.0;
+         static float lastRawLower = -100.0;
+         const float HYSTERESIS = 2.0; // Deadzone ~2% of pot range
+         
+         bool rawChanged = (abs(valUpper - lastRawUpper) > HYSTERESIS) ||
+                          (abs(valLower - lastRawLower) > HYSTERESIS);
+         
+         if (!rawChanged) return; // Skip if noise only
+         
+         lastRawUpper = valUpper;
+         lastRawLower = valLower;
+         
+         // Map to pH range 0-14
+         float rawUpper = (valUpper / 100.0f) * 14.0f;
+         float rawLower = (valLower / 100.0f) * 14.0f;
+         
+         // Round to 2 decimal places
+         float roundedUpper = round(rawUpper * 100.0f) / 100.0f;
+         float roundedLower = round(rawLower * 100.0f) / 100.0f;
+         
+         // Check if value is exactly X.0 or X.5 (tolerance 0.01)
+         float fracUpper = fmod(roundedUpper, 0.5f);
+         float fracLower = fmod(roundedLower, 0.5f);
+         bool upperIsMilestone = (fracUpper < 0.02f) || (fracUpper > 0.48f);
+         bool lowerIsMilestone = (fracLower < 0.02f) || (fracLower > 0.48f);
+         
+         if (!upperIsMilestone && !lowerIsMilestone) return; // Not at milestone yet
+         
+         // Snap to exact X.0 or X.5 if at milestone
+         float snappedUpper = upperIsMilestone ? (round(roundedUpper * 2.0f) / 2.0f) : _config.phUpperLimit;
+         float snappedLower = lowerIsMilestone ? (round(roundedLower * 2.0f) / 2.0f) : _config.phLowerLimit;
+         
+         // Only update and log if value changed
          static float lastUp = -1.0;
          static float lastLow = -1.0;
-         if (abs(_config.phUpperLimit - lastUp) > 0.05 || abs(_config.phLowerLimit - lastLow) > 0.05) {
-             Serial.printf("[Config] Upper: %.2f | Lower: %.2f\n", _config.phUpperLimit, _config.phLowerLimit);
-             lastUp = _config.phUpperLimit;
-             lastLow = _config.phLowerLimit;
+         
+         if (snappedUpper != lastUp || snappedLower != lastLow) {
+             _config.phUpperLimit = snappedUpper;
+             _config.phLowerLimit = snappedLower;
+             Serial.printf("[Config] Upper: %.1f | Lower: %.1f\n", snappedUpper, snappedLower);
+             lastUp = snappedUpper;
+             lastLow = snappedLower;
          }
+    }
+    else if (_context.configState == CFG_SLOPE) {
+        Serial.println("[Config] Slope configuration via pot not implemented yet.");
+    }
+    else if (_context.configState == CFG_INTERCEPT) {
+        Serial.println("[Config] Intercept configuration via pot not implemented yet.");
     }
 }
 

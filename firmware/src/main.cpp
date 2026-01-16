@@ -42,7 +42,9 @@ PhController app(&storage,
                  &potUpper, 
                  &potLower,
                  &tempSensor,
-                 &relays);
+                 &relays,
+                 &mqtt
+                );
 
 void setup() {
     // 1. Init System Basics

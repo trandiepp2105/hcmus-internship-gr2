@@ -13,20 +13,10 @@ void MqttDriver::init(const char* server, uint16_t port) {
 }
 
 bool MqttDriver::connect(const char* clientId, const char* username, const char* password) {
-    if (_server == NULL) {
-        Serial.println("[MQTT] Error: Server not set");
-        return false;
-    }
+    if (_server == NULL) return false;
     
-    Serial.printf("[MQTT] Connecting as '%s'...\n", clientId);
-    bool result = _mqtt.connect(clientId, username, password);
-    
-    if (result) {
-        Serial.println("[MQTT] Connected!");
-    } else {
-        Serial.printf("[MQTT] Connection failed, rc=%d\n", _mqtt.state());
-    }
-    return result;
+    // username is used as Access Token in ThingsBoard
+    return _mqtt.connect(clientId, username, password); 
 }
 
 void MqttDriver::disconnect() {

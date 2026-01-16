@@ -13,13 +13,14 @@
 #include "../../middleware/Potentiometer/PotHandler.h"
 #include "../../middleware/Sensor/TempSensorHandler.h"
 #include "../../middleware/Relay/RelayHandler.h"
+#include "../../middleware/Mqtt/MqttHandler.h"
 
 // ======== Configuration ========
 #define PH_SAMPLE_INTERVAL_MS 5000  // Read sensors every 5 seconds
 
 // Network Config
 #define WIFI_AP_NAME          "PH CONTROLLER SETUP"
-#define MQTT_SERVER           "192.168.100.13"  // Change to your server
+#define MQTT_SERVER           "192.168.1.16"  // Change to your server
 #define MQTT_PORT             1883
 #define TB_DEVICE_NAME        "PH_CONTROLLER_005"
 #define TB_PROVISION_KEY      "7b489653-2d36-45bd-9476-c7aa5b9ae5fc"    // Set your key
@@ -50,7 +51,8 @@ public:
                  PotHandler* potUpper,
                  PotHandler* potLower,
                  TempSensorHandler* tempSensor,
-                 RelayHandler* relayHandler);
+                 RelayHandler* relayHandler,
+                MqttHandler* mqttHandler);
 
     /**
      * @brief Khởi tạo hệ thống (Load config, Init hardware)
@@ -73,6 +75,7 @@ private:
     PotHandler* _potLower;
     TempSensorHandler* _tempSensor;
     RelayHandler* _relayHandler;
+    MqttHandler* _mqttHandler;
 
     // Data Models
     PhConfig _config;
