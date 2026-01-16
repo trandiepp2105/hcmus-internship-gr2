@@ -17,8 +17,8 @@
     #define PIN_I2C_SCL     22
     
     // Potentiometers (ADC Input)
-    #define PIN_POT_UPPER   35  // Analog pin for Upper Threshold
-    #define PIN_POT_LOWER   32  // Analog pin for Lower Threshold
+    #define PIN_POT_UPPER   39  // Analog pin for Upper Threshold
+    #define PIN_POT_LOWER   35  // Analog pin for Lower Threshold
     
     // Buttons  
     #define PIN_BTN_A       18   // Mode Button
