@@ -108,13 +108,157 @@ void MqttHandler::checkAndProvision(const char* deviceName, const char* provisio
     }
 }
 
+// Global callback pointers
+ControlModeCallback g_controlModeCallback = nullptr;
+RpcCallback g_rpcCallback = nullptr;
+OnConnectCallback g_onConnectCallback = nullptr;
+ThresholdCallback g_thresholdCallback = nullptr;
+MqttHandler* g_mqttHandler = nullptr;
+
+void MqttHandler::setControlModeCallback(ControlModeCallback callback) {
+    g_controlModeCallback = callback;
+}
+
+void MqttHandler::setRpcCallback(RpcCallback callback) {
+    g_rpcCallback = callback;
+}
+
+void MqttHandler::setOnConnectCallback(OnConnectCallback callback) {
+    g_onConnectCallback = callback;
+}
+
+void MqttHandler::setThresholdCallback(ThresholdCallback callback) {
+    g_thresholdCallback = callback;
+}
+
+// Global callback for attributes and RPC
+void mqttMessageCallback(char* topic, uint8_t* payload, unsigned int length) {
+    String message;
+    for (unsigned int i = 0; i < length; i++) {
+        message += (char)payload[i];
+    }
+    
+    Serial.printf("[MQTT] Topic: %s\n", topic);
+    Serial.printf("[MQTT] Payload: %s\n", message.c_str());
+    
+    String topicStr = String(topic);
+    
+    // Check if this is an attribute update
+    if (topicStr == "v1/devices/me/attributes") {
+        Serial.println("[MQTT] === ATTRIBUTE UPDATE RECEIVED ===");
+        
+        JsonDocument doc;
+        if (deserializeJson(doc, message) == DeserializationError::Ok) {
+            // Log all attributes received
+            for (JsonPair kv : doc.as<JsonObject>()) {
+                Serial.printf("[MQTT] Attribute: %s = ", kv.key().c_str());
+                if (kv.value().is<const char*>()) {
+                    Serial.println(kv.value().as<const char*>());
+                } else if (kv.value().is<bool>()) {
+                    Serial.println(kv.value().as<bool>() ? "true" : "false");
+                } else if (kv.value().is<int>()) {
+                    Serial.println(kv.value().as<int>());
+                } else if (kv.value().is<float>()) {
+                    Serial.println(kv.value().as<float>());
+                } else {
+                    Serial.println("[complex type]");
+                }
+            }
+            
+            // Handle control_mode attribute
+            if (doc["control_mode"].is<bool>()) {
+                bool isAuto = doc["control_mode"].as<bool>();
+                Serial.printf("[MQTT] Control mode changed to: %s\n", isAuto ? "AUTO" : "MANUAL");
+                
+                if (g_controlModeCallback != nullptr) {
+                    g_controlModeCallback(isAuto);
+                }
+            }
+            
+            // Handle threshold attributes (min_threshold, max_threshold)
+            bool hasMinThreshold = doc["min_threshold"].is<float>() || doc["min_threshold"].is<int>();
+            bool hasMaxThreshold = doc["max_threshold"].is<float>() || doc["max_threshold"].is<int>();
+            
+            if ((hasMinThreshold || hasMaxThreshold) && g_thresholdCallback != nullptr) {
+                // Get current values or defaults
+                float minThreshold = hasMinThreshold ? doc["min_threshold"].as<float>() : -1.0f;
+                float maxThreshold = hasMaxThreshold ? doc["max_threshold"].as<float>() : -1.0f;
+                
+                Serial.printf("[MQTT] Threshold update: min=%.1f, max=%.1f\n", minThreshold, maxThreshold);
+                g_thresholdCallback(minThreshold, maxThreshold);
+            }
+        }
+        Serial.println("[MQTT] ================================");
+    }
+    // Check if this is an RPC request
+    else if (topicStr.startsWith("v1/devices/me/rpc/request/")) {
+        // Extract request ID from topic
+        int requestId = topicStr.substring(26).toInt();
+        Serial.println("[MQTT] === RPC REQUEST ===");
+        Serial.printf("[MQTT] Request ID: %d\n", requestId);
+        Serial.printf("[MQTT] Raw Payload: %s\n", message.c_str());
+        
+        JsonDocument doc;
+        if (deserializeJson(doc, message) == DeserializationError::Ok) {
+            // Print all JSON keys for debugging
+            Serial.println("[MQTT] Parsed JSON:");
+            for (JsonPair kv : doc.as<JsonObject>()) {
+                Serial.printf("[MQTT]   Key: %s\n", kv.key().c_str());
+            }
+            
+            const char* method = doc["method"].as<const char*>();
+            Serial.printf("[MQTT] Method: %s\n", method);
+            
+            bool success = false;
+            String responseMsg = "Unknown method";
+            
+            // Handle setRelay method
+            if (strcmp(method, "setRelay") == 0) {
+                int relay = doc["params"]["relay"].as<int>();
+                bool state = doc["params"]["state"].as<bool>();
+                Serial.printf("[MQTT] setRelay: relay=%d, state=%s\n", relay, state ? "ON" : "OFF");
+                
+                if (g_rpcCallback != nullptr) {
+                    success = g_rpcCallback(method, relay, state);
+                    responseMsg = success ? "OK" : "REJECTED (AUTO mode)";
+                } else {
+                    responseMsg = "No handler registered";
+                }
+            }
+            // Handle getStatus method
+            else if (strcmp(method, "getStatus") == 0) {
+                success = true;
+                responseMsg = "Status OK";
+            }
+            
+            // Send response
+            if (g_mqttHandler != nullptr) {
+                g_mqttHandler->sendRpcResponse(requestId, success, responseMsg.c_str());
+            }
+        }
+        Serial.println("[MQTT] ================================");
+    }
+}
+
 void MqttHandler::update(const char* deviceName) {
     if (!_driver.isConnected()) {
         if (millis() - _lastReconnectAttempt > MQTT_RECONNECT_INTERVAL_MS) {
             _lastReconnectAttempt = millis();
             
             if (_token.length() > 0) {
-                _driver.connect(deviceName, _token.c_str(), NULL);
+                if (_driver.connect(deviceName, _token.c_str(), NULL)) {
+                    Serial.println("[MQTT] Connected! Subscribing to topics...");
+                    g_mqttHandler = this;
+                    _driver.setCallback(mqttMessageCallback);
+                    _driver.subscribe("v1/devices/me/attributes");
+                    _driver.subscribe("v1/devices/me/rpc/request/+");
+                    Serial.println("[MQTT] Subscribed to attributes and RPC");
+                    
+                    // Call onConnect callback
+                    if (g_onConnectCallback != nullptr) {
+                        g_onConnectCallback();
+                    }
+                }
             }
         }
     }
@@ -162,4 +306,55 @@ bool MqttHandler::pushTelemetry(float ph, float temp, uint8_t outputs, uint8_t m
 
 bool MqttHandler::isConnected() {
     return _driver.isConnected();
+}
+
+bool MqttHandler::sendRpcResponse(int requestId, bool success, const char* message) {
+    if (!_driver.isConnected()) return false;
+    
+    JsonDocument doc;
+    doc["success"] = success;
+    doc["message"] = message;
+    
+    char buffer[128];
+    serializeJson(doc, buffer);
+    
+    String responseTopic = String(TB_TOPIC_RPC_RESPONSE) + String(requestId);
+    bool result = _driver.publish(responseTopic.c_str(), buffer);
+    
+    Serial.printf("[MQTT] RPC Response (ID: %d): %s\n", requestId, buffer);
+    return result;
+}
+
+bool MqttHandler::pushAttribute(const char* key, bool value) {
+    if (!_driver.isConnected()) return false;
+    
+    JsonDocument doc;
+    doc[key] = value;
+    
+    char buffer[64];
+    serializeJson(doc, buffer);
+    
+    bool result = _driver.publish(TB_TOPIC_ATTRIBUTES, buffer);
+    
+    if (result) {
+        Serial.printf("[MQTT] Attribute pushed: %s = %s\n", key, value ? "true" : "false");
+    }
+    return result;
+}
+
+bool MqttHandler::pushAttribute(const char* key, float value) {
+    if (!_driver.isConnected()) return false;
+    
+    JsonDocument doc;
+    doc[key] = value;
+    
+    char buffer[64];
+    serializeJson(doc, buffer);
+    
+    bool result = _driver.publish(TB_TOPIC_ATTRIBUTES, buffer);
+    
+    if (result) {
+        Serial.printf("[MQTT] Attribute pushed: %s = %.2f\n", key, value);
+    }
+    return result;
 }
