@@ -5,41 +5,33 @@
 
 /**
  * @class ButtonDriver
- * @brief Lop Driver de xu ly tin hieu nut nhan voi logic chong nhieu.
+ * @brief Driver nut nhan dung interrupt de phan hoi nhanh.
  */
 class ButtonDriver {
 public:
-    /**
-     * @brief Khoi tao doi tuong ButtonDriver cho mot chan cu the.
-     * @param pin So chan GPIO ma nut nhan duoc ket noi.
-     */
     ButtonDriver(uint8_t pin);
 
     /**
-     * @brief Khoi tao
+     * @brief Khoi tao va gan interrupt
      */
     void init();
 
     /**
-     * @brief Cap nhat trang thai nut nhan va xu ly logic chong nhieu.
-     *
-     * Ham nay can duoc goi thuong xuyen (vi du: trong vong lap loop)
-     * de dam bao trang thai nut nhan duoc cap nhat chinh xac.
+     * @brief Kiem tra va tra ve trang thai nhan nut (edge-triggered)
+     * @return true neu nut vua duoc nhan (rising edge), false neu khong
      */
-    void update();
+    bool checkClicked();
 
     /**
-     * @brief Kiem tra xem nut nhan hien tai co dang duoc nhan hay khong.
-     * @return true neu nut dang nhan, false neu nguoc lai.
+     * @brief ISR handler (goi boi interrupt)
      */
-    bool isPressed();
+    void IRAM_ATTR handleInterrupt();
 
 private:
     uint8_t _pin;
-    bool _currentState;
-    bool _lastState;
-    uint32_t _lastDebounceTime;
-    const uint32_t _debounceDelay = 50; 
+    volatile bool _pressed;           // Flag danh dau nut da nhan
+    volatile uint32_t _lastInterruptTime;  // Thoi diem interrupt cuoi
+    const uint32_t _debounceDelay = 150;   // 150ms debounce (prevent double-click)
 };
 
 #endif
