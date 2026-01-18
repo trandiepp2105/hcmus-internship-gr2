@@ -20,10 +20,10 @@
 #define COLOR_FOOTER_BG     0xDEFB  // Light gray footer
 #define COLOR_TEXT_PRIMARY  0x0000  // Black text
 #define COLOR_TEXT_SECONDARY 0x4208 // Dark gray text
-#define COLOR_PH_OK         0x07E0  // Green
+#define COLOR_PH_OK         0x03E0  // Dark Green (was 0x07E0)
 #define COLOR_PH_HIGH       0xF800  // Red
 #define COLOR_PH_LOW        0x001F  // Blue
-#define COLOR_RELAY_ON      0x07E0  // Green
+#define COLOR_RELAY_ON      0x03E0  // Dark Green (was 0x07E0)
 #define COLOR_RELAY_OFF     0xF800  // Red (was gray)
 #define COLOR_CONNECTED     0x07E0  // Green
 #define COLOR_DISCONNECTED  0xF800  // Red
