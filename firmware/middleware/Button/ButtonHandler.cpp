@@ -6,21 +6,10 @@ ButtonHandler::ButtonHandler(uint8_t pin)
 }
 
 void ButtonHandler::begin() {
-    _driver.init(); // Driver uses init(), not begin()
+    _driver.init(); // Init with interrupt
 }
 
 bool ButtonHandler::checkClicked() {
-    // Force update driver state (polling)
-    _driver.update(); 
-    
-    // Check state
-    bool isPressed = _driver.isPressed();
-    
-    if (isPressed && !_wasPressed) {
-        _wasPressed = true;
-        return true; 
-    } else if (!isPressed) {
-        _wasPressed = false;
-    }
-    return false;
+    // Driver now uses interrupt, just check flag
+    return _driver.checkClicked();
 }
