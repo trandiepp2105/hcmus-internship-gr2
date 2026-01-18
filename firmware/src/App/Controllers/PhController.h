@@ -9,7 +9,8 @@
 #include "../../../lib/Storage/Storage.h"
 // #include "../../../lib/BSP/IOExpander/IOExpanderBSP.h"
 #include "../../middleware/Button/ButtonHandler.h"
-#include "../../middleware/Lcd/LcdHandler.h"
+#include "../../middleware/Tft/TftHandler.h"
+#include "../../middleware/Wifi/WifiHandler.h"
 #include "../../middleware/Potentiometer/PotHandler.h"
 #include "../../middleware/Sensor/TempSensorHandler.h"
 #include "../../middleware/Relay/RelayHandler.h"
@@ -47,7 +48,8 @@ public:
                  // IOExpanderBSP* ioExpander,
                  ButtonHandler* btnA, 
                  ButtonHandler* btnB,
-                 LcdHandler* lcd,
+                 TftHandler* tft,
+                 WifiHandler* wifi,
                  PotHandler* potUpper,
                  PotHandler* potLower,
                  TempSensorHandler* tempSensor,
@@ -68,6 +70,37 @@ public:
      * @brief Test LCD display with incrementing values
      */
     void testLcd();
+    
+    /**
+     * @brief Handle button inputs (should be called first in loop for responsiveness)
+     */
+    void handleInputs();
+    
+    /**
+     * @brief Set control mode from MQTT callback
+     */
+    void setControlMode(bool isAuto);
+    
+    /**
+     * @brief Handle RPC setRelay command
+     * @return true if command was accepted (MANUAL mode), false if rejected (AUTO mode)
+     */
+    bool handleRpcSetRelay(int relay, bool state);
+    
+    /**
+     * @brief Sync control mode to ThingsBoard (call after MQTT connects)
+     */
+    void syncControlMode();
+    
+    /**
+     * @brief Sync thresholds to ThingsBoard (call after MQTT connects)
+     */
+    void syncThresholds();
+    
+    /**
+     * @brief Handle threshold update from ThingsBoard
+     */
+    void handleThresholdUpdate(float minThreshold, float maxThreshold);
 
 private:
     // Dependencies
@@ -75,7 +108,8 @@ private:
     // IOExpanderBSP* _ioExpander;
     ButtonHandler* _btnA;
     ButtonHandler* _btnB;
-    LcdHandler* _lcd;
+    TftHandler* _tft;
+    WifiHandler* _wifi;
     PotHandler* _potUpper;
     PotHandler* _potLower;
     TempSensorHandler* _tempSensor;
@@ -95,11 +129,6 @@ private:
      * @brief Đọc cảm biến (pH, Temp, Pots)
      */
     void readSensors();
-
-    /**
-     * @brief Xử lý sự kiện nút bấm (State Transitions)
-     */
-    void handleInputs();
 
     /**
      * @brief Logic điều khiển cho chế độ AUTO

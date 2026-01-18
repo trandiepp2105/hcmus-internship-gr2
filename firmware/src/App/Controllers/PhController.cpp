@@ -1,11 +1,45 @@
 #include "PhController.h"
 #include "../../middleware/bsp_board.h" // For pin defs if needed, though passed via Dependency Injection
 
+// Static pointer for callback access
+static PhController* g_phController = nullptr;
+
+// Callback function for control mode changes from MQTT
+static void onControlModeChange(bool isAuto) {
+    if (g_phController) {
+        g_phController->setControlMode(isAuto);
+    }
+}
+
+// Callback function for RPC commands from MQTT
+static bool onRpcCommand(const char* method, int relay, bool state) {
+    if (g_phController) {
+        return g_phController->handleRpcSetRelay(relay, state);
+    }
+    return false;
+}
+
+// Callback function for MQTT connect event
+static void onMqttConnect() {
+    if (g_phController) {
+        g_phController->syncControlMode();
+        g_phController->syncThresholds();
+    }
+}
+
+// Callback function for threshold changes from ThingsBoard
+static void onThresholdChange(float minThreshold, float maxThreshold) {
+    if (g_phController) {
+        g_phController->handleThresholdUpdate(minThreshold, maxThreshold);
+    }
+}
+
 PhController::PhController(Storage* storage, 
                            // IOExpanderBSP* ioExpander,
                            ButtonHandler* btnA, 
                            ButtonHandler* btnB,
-                           LcdHandler* lcd,
+                           TftHandler* tft,
+                           WifiHandler* wifi,
                            PotHandler* potUpper,
                            PotHandler* potLower,
                            TempSensorHandler* tempSensor,
@@ -15,7 +49,8 @@ PhController::PhController(Storage* storage,
       // _ioExpander(ioExpander), 
       _btnA(btnA), 
       _btnB(btnB), 
-      _lcd(lcd), 
+      _tft(tft),
+      _wifi(wifi),
       _potUpper(potUpper), 
       _potLower(potLower),
       _tempSensor(tempSensor),
@@ -34,7 +69,106 @@ void PhController::begin() {
     _context.systemMode = MODE_AUTO;
     _context.isAutoControl = true;
     
+    // 4. Register MQTT callbacks
+    g_phController = this;
+    if (_mqttHandler) {
+        _mqttHandler->setControlModeCallback(onControlModeChange);
+        _mqttHandler->setRpcCallback(onRpcCommand);
+        _mqttHandler->setOnConnectCallback(onMqttConnect);
+        _mqttHandler->setThresholdCallback(onThresholdChange);
+    }
+    
     Serial.println("[PhController] Started.");
+}
+
+void PhController::setControlMode(bool isAuto) {
+    if (isAuto) {
+        _context.systemMode = MODE_AUTO;
+        _context.isAutoControl = true;
+        Serial.println("[PhController] Switched to AUTO mode via MQTT");
+    } else {
+        _context.systemMode = MODE_MANUAL;
+        _context.isAutoControl = false;
+        Serial.println("[PhController] Switched to MANUAL mode via MQTT");
+    }
+    
+    // Sync to ThingsBoard
+    if (_mqttHandler && _mqttHandler->isConnected()) {
+        _mqttHandler->pushAttribute("control_mode", isAuto);
+    }
+}
+
+void PhController::syncControlMode() {
+    // Push current control mode to ThingsBoard
+    if (_mqttHandler && _mqttHandler->isConnected()) {
+        bool isAuto = (_context.systemMode == MODE_AUTO);
+        _mqttHandler->pushAttribute("control_mode", isAuto);
+        Serial.printf("[PhController] Synced control_mode to ThingsBoard: %s\n", isAuto ? "AUTO" : "MANUAL");
+    }
+}
+
+void PhController::syncThresholds() {
+    // Push current thresholds to ThingsBoard
+    if (_mqttHandler && _mqttHandler->isConnected()) {
+        _mqttHandler->pushAttribute("min_threshold", _config.phLowerLimit);
+        _mqttHandler->pushAttribute("max_threshold", _config.phUpperLimit);
+        Serial.printf("[PhController] Synced thresholds: min=%.1f, max=%.1f\n", 
+                      _config.phLowerLimit, _config.phUpperLimit);
+    }
+}
+
+void PhController::handleThresholdUpdate(float minThreshold, float maxThreshold) {
+    bool updated = false;
+    
+    // Update min_threshold (phLowerLimit) if valid
+    if (minThreshold >= 0.0f && minThreshold <= 14.0f) {
+        _config.phLowerLimit = minThreshold;
+        updated = true;
+        Serial.printf("[PhController] Updated phLowerLimit = %.1f from ThingsBoard\n", minThreshold);
+    }
+    
+    // Update max_threshold (phUpperLimit) if valid
+    if (maxThreshold >= 0.0f && maxThreshold <= 14.0f) {
+        _config.phUpperLimit = maxThreshold;
+        updated = true;
+        Serial.printf("[PhController] Updated phUpperLimit = %.1f from ThingsBoard\n", maxThreshold);
+    }
+    
+    // Save to persistent storage if updated
+    if (updated) {
+        saveConfig();
+        Serial.println("[PhController] Thresholds saved to storage");
+    }
+}
+
+bool PhController::handleRpcSetRelay(int relay, bool state) {
+    // Only allow relay control in MANUAL mode
+    if (_context.systemMode != MODE_MANUAL) {
+        Serial.println("[PhController] RPC REJECTED: Not in MANUAL mode");
+        return false;
+    }
+    
+    // Validate relay number (1-4)
+    if (relay < 1 || relay > 4) {
+        Serial.printf("[PhController] RPC REJECTED: Invalid relay %d\n", relay);
+        return false;
+    }
+    
+    // Update context output
+    switch (relay) {
+        case 1: _context.output1 = state; break;
+        case 2: _context.output2 = state; break;
+        case 3: _context.output3 = state; break;
+        case 4: _context.output4 = state; break;
+    }
+    
+    // Apply to hardware
+    if (_relayHandler) {
+        _relayHandler->setRelay(relay, state);
+    }
+    
+    Serial.printf("[PhController] RPC OK: Relay %d = %s\n", relay, state ? "ON" : "OFF");
+    return true;
 }
 
 void PhController::testLcd() {
@@ -48,9 +182,9 @@ void PhController::testLcd() {
         float testPh = 7.0 + (counter % 10) * 0.5;
         float testTemp = 25.0 + (counter % 5);
         
-        // Use new API with test output states
-        _lcd->showAutoManualScreen(testPh, testTemp, false, false, false, false, true);
-        Serial.printf("[LCD Test] pH=%.1f | Temp=%.1f\n", testPh, testTemp);
+        // Use new TFT API with test output states
+        _tft->showAutoManualScreen(testPh, testTemp, false, false, false, false, true, 8.5, 6.5);
+        Serial.printf("[TFT Test] pH=%.1f | Temp=%.1f\n", testPh, testTemp);
         
         counter++;
     }
@@ -207,29 +341,68 @@ void PhController::readSensors() {
 
 void PhController::handleInputs() {
     // --- Button A: Mode Switching ---
-    if (_btnA->checkClicked()) { // Assuming isPressed handles debounce and returns true once on press
+    if (_btnA->checkClicked()) {
+        uint32_t t0 = millis();
+        uint32_t t1, t2; // Declare outside switch
         Serial.println("[Input] Button A Pressed -> Changing Mode");
+        
         switch (_context.systemMode) {
             case MODE_AUTO:
                 _context.systemMode = MODE_MANUAL;
                 _context.isAutoControl = false;
                 break;
+                
             case MODE_MANUAL:
                 _context.systemMode = MODE_CONFIG;
                 _context.isAutoControl = false;
+                t1 = millis();
                 stopAllActuators(); // Safety first
+                Serial.printf("  stopAllActuators: %lu ms\n", millis() - t1);
                 break;
+                
             case MODE_CONFIG:
                 _context.systemMode = MODE_INFOR;
                 _context.isAutoControl = false;
+                
+                t1 = millis();
                 stopAllActuators();
-                saveConfig(); // Auto-save on exit config? Or explicit save? Assuming auto-save for now.
+                Serial.printf("  stopAllActuators: %lu ms\n", millis() - t1);
+                
+                t1 = millis();
+                saveConfig(); // Auto-save on exit config
+                Serial.printf("  saveConfig: %lu ms\n", millis() - t1);
+                
+                t1 = millis();
+                syncThresholds(); // Sync to ThingsBoard
+                Serial.printf("  syncThresholds: %lu ms\n", millis() - t1);
                 break;
+                
             case MODE_INFOR:
                 _context.systemMode = MODE_AUTO;
                 _context.isAutoControl = true;
                 break;
         }
+        
+        t2 = millis();
+        // Reset TFT state to force full redraw on mode change
+        _tft->resetOnModeChange();
+        Serial.printf("  resetOnModeChange: %lu ms\n", millis() - t2);
+        
+        t2 = millis();
+        // IMMEDIATE display update (don't wait for next loop)
+        updateDisplay();
+        Serial.printf("  updateDisplay: %lu ms\n", millis() - t2);
+        
+        t2 = millis();
+        // Sync control_mode to ThingsBoard after mode change
+        if (_mqttHandler && _mqttHandler->isConnected()) {
+            bool isAuto = (_context.systemMode == MODE_AUTO);
+            _mqttHandler->pushAttribute("control_mode", isAuto);
+        }
+        Serial.printf("  pushAttribute: %lu ms\n", millis() - t2);
+        
+        uint32_t totalTime = millis() - t0;
+        Serial.printf("[Input] TOTAL Mode change: %lu ms\n", totalTime);
     }
 
     // --- Button B: Action/Select ---
@@ -362,39 +535,55 @@ void PhController::updateDisplay() {
         
         switch (_context.systemMode) {
             case MODE_AUTO:
-                _lcd->showAutoManualScreen(
+                _tft->showAutoManualScreen(
                     _context.currentPh, _context.currentTemp,
                     _context.output1, _context.output2, _context.output3, _context.output4,
-                    true  // isAuto = true
+                    true,  // isAuto = true
+                    _config.phUpperLimit, _config.phLowerLimit
                 );
                 break;
                 
             case MODE_MANUAL:
-                _lcd->showAutoManualScreen(
+                _tft->showAutoManualScreen(
                     _context.currentPh, _context.currentTemp,
                     _context.output1, _context.output2, _context.output3, _context.output4,
-                    false  // isAuto = false
+                    false,  // isAuto = false
+                    _config.phUpperLimit, _config.phLowerLimit
                 );
                 break;
                 
             case MODE_CONFIG:
                 switch (_context.configState) {
                     case CFG_THRESHOLD:
-                        _lcd->showConfigScreen(CFG_THRESHOLD, _config.phUpperLimit, _config.phLowerLimit);
+                        _tft->showConfigScreen(CFG_THRESHOLD, _config.phUpperLimit, _config.phLowerLimit);
                         break;
                     case CFG_SLOPE:
-                        _lcd->showConfigScreen(CFG_SLOPE, _config.calibSlope, 0);
+                        _tft->showConfigScreen(CFG_SLOPE, _config.calibSlope, 0);
                         break;
                     case CFG_INTERCEPT:
-                        _lcd->showConfigScreen(CFG_INTERCEPT, _config.calibIntercept, 0);
+                        _tft->showConfigScreen(CFG_INTERCEPT, _config.calibIntercept, 0);
                         break;
                 }
                 break;
                 
-            case MODE_INFOR:
-                _lcd->showInfoScreen(_config.phUpperLimit, _config.phLowerLimit, 
-                                     _config.calibSlope, _config.calibIntercept);
+            case MODE_INFOR: {
+                // Get connection status
+                bool wifiOk = _wifi ? _wifi->isConnected() : false;
+                bool mqttOk = _mqttHandler ? _mqttHandler->isConnected() : false;
+                String ip = _wifi ? _wifi->getIP() : "N/A";
+                
+                // Determine next mode name
+                String nextMode = "AUTO";  // INFO -> AUTO
+                
+                _tft->showInfoScreen(
+                    wifiOk, mqttOk,
+                    ip, TB_DEVICE_NAME,
+                    _config.phUpperLimit, _config.phLowerLimit,
+                    _config.calibSlope, _config.calibIntercept,
+                    nextMode
+                );
                 break;
+            }
         }
     }
 }
