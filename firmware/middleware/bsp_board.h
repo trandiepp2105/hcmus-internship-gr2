@@ -23,6 +23,7 @@
     // Buttons  
     #define PIN_BTN_A       16   // Mode Button
     #define PIN_BTN_B       17   // Action/Select Button
+    #define PIN_BTN_C       19   // Calibration Config Button
     
     // Temperature Sensor
     #define PIN_TEMP_SENSOR 15  // DS18B20 Data Pin
