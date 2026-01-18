@@ -48,6 +48,7 @@ public:
                  // IOExpanderBSP* ioExpander,
                  ButtonHandler* btnA, 
                  ButtonHandler* btnB,
+                 ButtonHandler* btnC,
                  TftHandler* tft,
                  WifiHandler* wifi,
                  PotHandler* potUpper,
@@ -108,6 +109,7 @@ private:
     // IOExpanderBSP* _ioExpander;
     ButtonHandler* _btnA;
     ButtonHandler* _btnB;
+    ButtonHandler* _btnC;
     TftHandler* _tft;
     WifiHandler* _wifi;
     PotHandler* _potUpper;

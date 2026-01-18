@@ -38,6 +38,7 @@ PhController::PhController(Storage* storage,
                            // IOExpanderBSP* ioExpander,
                            ButtonHandler* btnA, 
                            ButtonHandler* btnB,
+                           ButtonHandler* btnC,
                            TftHandler* tft,
                            WifiHandler* wifi,
                            PotHandler* potUpper,
@@ -49,6 +50,7 @@ PhController::PhController(Storage* storage,
       // _ioExpander(ioExpander), 
       _btnA(btnA), 
       _btnB(btnB), 
+      _btnC(btnC),
       _tft(tft),
       _wifi(wifi),
       _potUpper(potUpper), 
@@ -202,6 +204,7 @@ void PhController::update() {
                 _lastSampleTime = millis();
                 readSensors();
 
+                // Send telemetry if MQTT connected
                 if (_mqttHandler && _mqttHandler->isConnected()) {
                     uint8_t relayMask = 0;
                     if (_context.output1) relayMask |= 0x01;
@@ -209,24 +212,25 @@ void PhController::update() {
                     if (_context.output3) relayMask |= 0x04;
                     if (_context.output4) relayMask |= 0x08;
 
-                    // Sending data to Middleware
                     _mqttHandler->pushTelemetry(
                         _context.currentPh, 
                         _context.currentTemp, 
                         relayMask, 
                         _context.systemMode, 
-                        0 // errorCode
+                        0
                     );
-                // Log context
+                }
+                
+                // These should ALWAYS run, not just when MQTT connected!
                 Serial.printf("[Context] pH=%.2f | Temp=%.1f | Mode=AUTO | Out=%d%d%d%d\n",
                     _context.currentPh, _context.currentTemp,
                     _context.output1, _context.output2, _context.output3, _context.output4);
                 
                 runAutoLogic();
                 updateOutputs();
+                updateDisplay();
             }
             break;
-        }
         case MODE_MANUAL:
             // Periodic Tasks - Every 5 Seconds
             if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
@@ -340,81 +344,120 @@ void PhController::readSensors() {
 }
 
 void PhController::handleInputs() {
-    // --- Button A: Mode Switching ---
+    // --- Button A: Mode Switching or Cancel Config ---
     if (_btnA->checkClicked()) {
-        uint32_t t0 = millis();
-        uint32_t t1, t2; // Declare outside switch
-        Serial.println("[Input] Button A Pressed -> Changing Mode");
+        Serial.println("[Input] Button A Pressed");
         
+        if (_context.systemMode == MODE_CONFIG) {
+            // In CONFIG mode: Button A cancels without saving
+            Serial.println("[Input] Config CANCELLED -> INFO (no save)");
+            _context.systemMode = MODE_INFOR;
+            _context.isAutoControl = false;
+            stopAllActuators();
+            
+            // Reset TFT and update display
+            _tft->resetOnModeChange();
+            updateDisplay();
+            return;
+        }
+        
+        // Normal mode cycling (not in CONFIG): AUTO -> MANUAL -> INFO -> AUTO
         switch (_context.systemMode) {
             case MODE_AUTO:
                 _context.systemMode = MODE_MANUAL;
                 _context.isAutoControl = false;
+                Serial.println("[Input] AUTO -> MANUAL");
                 break;
                 
             case MODE_MANUAL:
-                _context.systemMode = MODE_CONFIG;
-                _context.isAutoControl = false;
-                t1 = millis();
-                stopAllActuators(); // Safety first
-                Serial.printf("  stopAllActuators: %lu ms\n", millis() - t1);
-                break;
-                
-            case MODE_CONFIG:
                 _context.systemMode = MODE_INFOR;
                 _context.isAutoControl = false;
-                
-                t1 = millis();
                 stopAllActuators();
-                Serial.printf("  stopAllActuators: %lu ms\n", millis() - t1);
-                
-                t1 = millis();
-                saveConfig(); // Auto-save on exit config
-                Serial.printf("  saveConfig: %lu ms\n", millis() - t1);
-                
-                t1 = millis();
-                syncThresholds(); // Sync to ThingsBoard
-                Serial.printf("  syncThresholds: %lu ms\n", millis() - t1);
+                Serial.println("[Input] MANUAL -> INFO");
                 break;
                 
             case MODE_INFOR:
                 _context.systemMode = MODE_AUTO;
                 _context.isAutoControl = true;
+                Serial.println("[Input] INFO -> AUTO");
+                break;
+                
+            case MODE_CONFIG:
+                // Already handled above
                 break;
         }
         
-        t2 = millis();
         // Reset TFT state to force full redraw on mode change
         _tft->resetOnModeChange();
-        Serial.printf("  resetOnModeChange: %lu ms\n", millis() - t2);
         
-        t2 = millis();
-        // IMMEDIATE display update (don't wait for next loop)
+        // IMMEDIATE display update
         updateDisplay();
-        Serial.printf("  updateDisplay: %lu ms\n", millis() - t2);
         
-        t2 = millis();
-        // Sync control_mode to ThingsBoard after mode change
+        // Sync control_mode to ThingsBoard
         if (_mqttHandler && _mqttHandler->isConnected()) {
             bool isAuto = (_context.systemMode == MODE_AUTO);
             _mqttHandler->pushAttribute("control_mode", isAuto);
         }
-        Serial.printf("  pushAttribute: %lu ms\n", millis() - t2);
-        
-        uint32_t totalTime = millis() - t0;
-        Serial.printf("[Input] TOTAL Mode change: %lu ms\n", totalTime);
     }
 
-    // --- Button B: Action/Select ---
+    // --- Button B: Enter/Save CONFIG or Next Config Page ---
     if (_btnB->checkClicked()) {
         Serial.println("[Input] Button B Pressed");
-        if (_context.systemMode == MODE_CONFIG) {
-            // Cycle Config Pages
-            switch (_context.configState) {
-                case CFG_THRESHOLD: _context.configState = CFG_SLOPE; break;
-                case CFG_SLOPE:     _context.configState = CFG_INTERCEPT; break;
-                case CFG_INTERCEPT: _context.configState = CFG_THRESHOLD; break;
-            }
+        
+        if (_context.systemMode == MODE_INFOR) {
+            // Enter CONFIG_THRESHOLD from INFO
+            Serial.println("[Input] INFO -> CONFIG (THRESHOLD)");
+            _context.systemMode = MODE_CONFIG;
+            _context.configState = CFG_THRESHOLD;
+            _context.isAutoControl = false;
+            stopAllActuators();
+            
+            _tft->resetOnModeChange();
+            updateDisplay();
+            
+        } else if (_context.systemMode == MODE_CONFIG) {
+            // In CONFIG mode: Button B saves and returns to INFO
+            Serial.println("[Input] CONFIG -> INFO (SAVE)");
+            
+            saveConfig();        // Save to storage
+            syncThresholds();    // Sync to ThingsBoard
+            
+            _context.systemMode = MODE_INFOR;
+            _context.isAutoControl = false;
+            
+            _tft->resetOnModeChange();
+            updateDisplay();
+        }
+    }
+    
+    // --- Button C: Enter/Save CALIB Config ---
+    if (_btnC->checkClicked()) {
+        Serial.println("[Input] Button C Pressed");
+        
+        if (_context.systemMode == MODE_INFOR) {
+            // Enter CONFIG_CALIB from INFO (Slope/Intercept)
+            Serial.println("[Input] INFO -> CONFIG (CALIB)");
+            _context.systemMode = MODE_CONFIG;
+            _context.configState = CFG_SLOPE;  // Start with slope
+            _context.isAutoControl = false;
+            stopAllActuators();
+            
+            _tft->resetOnModeChange();
+            updateDisplay();
+            
+        } else if (_context.systemMode == MODE_CONFIG && 
+                   (_context.configState == CFG_SLOPE || _context.configState == CFG_INTERCEPT)) {
+            // In CONFIG_CALIB mode: Button C saves and returns to INFO
+            Serial.println("[Input] CONFIG (CALIB) -> INFO (SAVE)");
+            
+            saveConfig();        // Save calibration to storage
+            syncThresholds();    // Sync to ThingsBoard
+            
+            _context.systemMode = MODE_INFOR;
+            _context.isAutoControl = false;
+            
+            _tft->resetOnModeChange();
+            updateDisplay();
         }
     }
 }

@@ -26,6 +26,7 @@ Storage storage;
 TftHandler tft; // Owns TftDriver, SPI display
 ButtonHandler btnA(PIN_BTN_A); // Owns ButtonDriver
 ButtonHandler btnB(PIN_BTN_B);
+ButtonHandler btnC(PIN_BTN_C); // Calibration config button
 PotHandler potUpper(PIN_POT_UPPER); // Owns PotDriver
 PotHandler potLower(PIN_POT_LOWER);
 TempSensorHandler tempSensor(PIN_TEMP_SENSOR);
@@ -37,7 +38,8 @@ RelayHandler relays(PIN_SR_DATA, PIN_SR_CLOCK, PIN_SR_LATCH);
 PhController app(&storage, 
                  // &ioExpander, // Disabled
                  &btnA, 
-                 &btnB, 
+                 &btnB,
+                 &btnC,
                  &tft,
                  &wifi,
                  &potUpper, 
