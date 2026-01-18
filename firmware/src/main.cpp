@@ -5,7 +5,7 @@
 #include "../middleware/bsp_board.h"
 
 // Layer 2: Middleware/BSP modules (Each owns a Driver)
-#include "../middleware/Lcd/LcdHandler.h"
+#include "../middleware/Tft/TftHandler.h"
 #include "../middleware/Button/ButtonHandler.h"
 #include "../middleware/Potentiometer/PotHandler.h"
 #include "../middleware/Sensor/TempSensorHandler.h"
@@ -23,7 +23,7 @@
 Storage storage;
 
 // 2. BSP Modules (Hardware Wrappers)
-LcdHandler lcd; // Owns LcdDriver, pin config internal/default
+TftHandler tft; // Owns TftDriver, SPI display
 ButtonHandler btnA(PIN_BTN_A); // Owns ButtonDriver
 ButtonHandler btnB(PIN_BTN_B);
 PotHandler potUpper(PIN_POT_UPPER); // Owns PotDriver
@@ -38,7 +38,8 @@ PhController app(&storage,
                  // &ioExpander, // Disabled
                  &btnA, 
                  &btnB, 
-                 &lcd, 
+                 &tft,
+                 &wifi,
                  &potUpper, 
                  &potLower,
                  &tempSensor,
@@ -57,7 +58,7 @@ void setup() {
     }
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-    // I2C Scanner - Find LCD address
+    // I2C Scanner - Find devices
     Serial.println("[I2C] Scanning for devices...");
     for (byte addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
@@ -67,15 +68,14 @@ void setup() {
     }
     Serial.println("[I2C] Scan complete.");
 
-    lcd.begin(); // Init LCD Driver
+    tft.begin(); // Init TFT Display
     btnA.begin(); // Init Button Driver
     btnB.begin();
     tempSensor.begin(); // Init DS18B20
     relays.begin(); // Init 74HC595 Relay Controller
-    // Pot doesn't need begin currently
+    
     // 3. Init Network
     // wifi.resetSettings();
-
     wifi.begin(WIFI_AP_NAME);
     mqtt.begin(MQTT_SERVER, MQTT_PORT);
     mqtt.checkAndProvision(TB_DEVICE_NAME, TB_PROVISION_KEY, TB_PROVISION_SECRET);
@@ -85,12 +85,46 @@ void setup() {
 }
 
 void loop() {
-    // WiFi maintenance (auto-reconnect, portal handling)
-    wifi.update();
+    static uint32_t lastMqttUpdate = 0;
+    static uint32_t lastWifiUpdate = 0;
+    uint32_t loopStart = millis();
+    uint32_t now = millis();
     
-    // Network maintenance
-    mqtt.update(TB_DEVICE_NAME);
+    // PRIORITY 1: Handle button inputs FIRST for instant response
+    // Button uses interrupt, but logic executes here
+    uint32_t t1 = millis();
+    app.handleInputs();
+    uint32_t handleInputsTime = millis() - t1;
     
-    // Application Loop
+    // PRIORITY 2: WiFi maintenance (every 500ms max)
+    t1 = millis();
+    uint32_t wifiTime = 0;
+    if (now - lastWifiUpdate > 500) {
+        wifi.update();
+        wifiTime = millis() - t1;
+        lastWifiUpdate = now;
+    }
+    
+    // PRIORITY 3: Network maintenance (every 1000ms max to avoid blocking)
+    t1 = millis();
+    uint32_t mqttTime = 0;
+    if (now - lastMqttUpdate > 1000) {
+        mqtt.update(TB_DEVICE_NAME);
+        mqttTime = millis() - t1;
+        lastMqttUpdate = now;
+    }
+    
+    // PRIORITY 4: Application Loop (sensors, control logic, display)
+    // Note: handleInputs() is called above, so it runs in update() too but that's OK
+    t1 = millis();
     app.update();
+    uint32_t appUpdateTime = millis() - t1;
+    
+    uint32_t totalLoopTime = millis() - loopStart;
+    
+    // Log if any component takes too long
+    if (totalLoopTime > 100) {
+        Serial.printf("[LOOP] Total:%lu ms (handleInputs:%lu, wifi:%lu, mqtt:%lu, app:%lu)\n",
+                      totalLoopTime, handleInputsTime, wifiTime, mqttTime, appUpdateTime);
+    }
 }
