@@ -36,9 +36,9 @@ static void onThresholdChange(float minThreshold, float maxThreshold) {
 
 PhController::PhController(Storage* storage, 
                            // IOExpanderBSP* ioExpander,
-                           ButtonHandler* btnA, 
-                           ButtonHandler* btnB,
-                           ButtonHandler* btnC,
+                           ButtonHandler* btnMode, 
+                           ButtonHandler* btnThreshold,
+                           ButtonHandler* btnCalib,
                            TftHandler* tft,
                            WifiHandler* wifi,
                            PotHandler* potUpper,
@@ -48,9 +48,9 @@ PhController::PhController(Storage* storage,
                            MqttHandler* mqttHandler)
     : _storage(storage), 
       // _ioExpander(ioExpander), 
-      _btnA(btnA), 
-      _btnB(btnB), 
-      _btnC(btnC),
+      _btnMode(btnMode), 
+      _btnThreshold(btnThreshold), 
+      _btnCalib(btnCalib),
       _tft(tft),
       _wifi(wifi),
       _potUpper(potUpper), 
@@ -345,7 +345,7 @@ void PhController::readSensors() {
 
 void PhController::handleInputs() {
     // --- Button A: Mode Switching or Cancel Config ---
-    if (_btnA->checkClicked()) {
+    if (_btnMode->checkClicked()) {
         Serial.println("[Input] Button A Pressed");
         
         if (_context.systemMode == MODE_CONFIG) {
@@ -401,7 +401,7 @@ void PhController::handleInputs() {
     }
 
     // --- Button B: Enter/Save CONFIG or Next Config Page ---
-    if (_btnB->checkClicked()) {
+    if (_btnThreshold->checkClicked()) {
         Serial.println("[Input] Button B Pressed");
         
         if (_context.systemMode == MODE_INFOR) {
@@ -431,7 +431,7 @@ void PhController::handleInputs() {
     }
     
     // --- Button C: Enter/Save CALIB Config ---
-    if (_btnC->checkClicked()) {
+    if (_btnCalib->checkClicked()) {
         Serial.println("[Input] Button C Pressed");
         
         if (_context.systemMode == MODE_INFOR) {
@@ -456,6 +456,81 @@ void PhController::handleInputs() {
             _context.systemMode = MODE_INFOR;
             _context.isAutoControl = false;
             
+            _tft->resetOnModeChange();
+            updateDisplay();
+        }
+    }
+}
+
+void PhController::handleButtonEvent(uint8_t button) {
+    Serial.printf("[PhController] Button %c event\n", 'A' + button);
+    
+    if (button == 0) { // BUTTON_A
+        if (_context.systemMode == MODE_CONFIG) {
+            Serial.println("[Input] Config CANCELLED -> INFO");
+            _context.systemMode = MODE_INFOR;
+            _context.isAutoControl = false;
+            stopAllActuators();
+        } else {
+            switch (_context.systemMode) {
+                case MODE_AUTO:
+                    _context.systemMode = MODE_MANUAL;
+                    _context.isAutoControl = false;
+                    Serial.println("[Input] AUTO -> MANUAL");
+                    break;
+                case MODE_MANUAL:
+                    _context.systemMode = MODE_INFOR;
+                    _context.isAutoControl = false;
+                    stopAllActuators();
+                    Serial.println("[Input] MANUAL -> INFO");
+                    break;
+                case MODE_INFOR:
+                    _context.systemMode = MODE_AUTO;
+                    _context.isAutoControl = true;
+                    Serial.println("[Input] INFO -> AUTO");
+                    break;
+                default: break;
+            }
+        }
+        _tft->resetOnModeChange();
+        updateDisplay();
+        if (_mqttHandler && _mqttHandler->isConnected()) {
+            _mqttHandler->pushAttribute("control_mode", _context.systemMode == MODE_AUTO);
+        }
+    }
+    else if (button == 1) { // BUTTON_B  
+        if (_context.systemMode == MODE_INFOR) {
+            Serial.println("[Input] INFO -> CONFIG (THRESHOLD)");
+            _context.systemMode = MODE_CONFIG;
+            _context.configState = CFG_THRESHOLD;
+            _context.isAutoControl = false;
+            stopAllActuators();
+            _tft->resetOnModeChange();
+            updateDisplay();
+        } else if (_context.systemMode == MODE_CONFIG && _context.configState == CFG_THRESHOLD) {
+            Serial.println("[Input] CONFIG -> INFO (SAVE)");
+            saveConfig();
+            syncThresholds();
+            _context.systemMode = MODE_INFOR;
+            _tft->resetOnModeChange();
+            updateDisplay();
+        }
+    }
+    else if (button == 2) { // BUTTON_C
+        if (_context.systemMode == MODE_INFOR) {
+            Serial.println("[Input] INFO -> CONFIG (CALIB)");
+            _context.systemMode = MODE_CONFIG;
+            _context.configState = CFG_SLOPE;
+            _context.isAutoControl = false;
+            stopAllActuators();
+            _tft->resetOnModeChange();
+            updateDisplay();
+        } else if (_context.systemMode == MODE_CONFIG && 
+                   (_context.configState == CFG_SLOPE || _context.configState == CFG_INTERCEPT)) {
+            Serial.println("[Input] CONFIG (CALIB) -> INFO (SAVE)");
+            saveConfig();
+            syncThresholds();
+            _context.systemMode = MODE_INFOR;
             _tft->resetOnModeChange();
             updateDisplay();
         }

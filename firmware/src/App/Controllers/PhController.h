@@ -38,17 +38,17 @@ public:
      * @brief Constructor
      * @param storage Driver lưu trữ cấu hình
      * @param ioExpander Driver IO mở rộng (Relays, LEDs)
-     * @param btnA Nút chuyển chế độ
-     * @param btnB Nút điều hướng/chọn
+     * @param btnMode Mode switching button
+     * @param btnThreshold Threshold config button
+     * @param btnCalib Calibration config button
      * @param lcd Màn hình hiển thị
      * @param potUpper Biến trở chỉnh ngưỡng trên
      * @param potLower Biến trở chỉnh ngưỡng dưới
      */
     PhController(Storage* storage, 
-                 // IOExpanderBSP* ioExpander,
-                 ButtonHandler* btnA, 
-                 ButtonHandler* btnB,
-                 ButtonHandler* btnC,
+                 ButtonHandler* btnMode, 
+                 ButtonHandler* btnThreshold,
+                 ButtonHandler* btnCalib,
                  TftHandler* tft,
                  WifiHandler* wifi,
                  PotHandler* potUpper,
@@ -76,6 +76,12 @@ public:
      * @brief Handle button inputs (should be called first in loop for responsiveness)
      */
     void handleInputs();
+    
+    /**
+     * @brief Handle button event from RTOS queue
+     * @param button Button ID (0=A, 1=B, 2=C)
+     */
+    void handleButtonEvent(uint8_t button);
     
     /**
      * @brief Set control mode from MQTT callback
@@ -106,10 +112,11 @@ public:
 private:
     // Dependencies
     Storage* _storage;
-    // IOExpanderBSP* _ioExpander;
-    ButtonHandler* _btnA;
-    ButtonHandler* _btnB;
-    ButtonHandler* _btnC;
+    
+    // Hardware Modules
+    ButtonHandler* _btnMode;
+    ButtonHandler* _btnThreshold;
+    ButtonHandler* _btnCalib;
     TftHandler* _tft;
     WifiHandler* _wifi;
     PotHandler* _potUpper;
