@@ -216,11 +216,14 @@ void TftHandler::showAutoManualScreen(float ph, float temp,
         lastZone = currentZone;
     }
     
-    // Update relay bar only if changed
-    if (r1 != _lastR1 || r2 != _lastR2 || r3 != _lastR3 || r4 != _lastR4) {
+    // Update relay bar only if changed OR first draw
+    if (_firstDraw || r1 != _lastR1 || r2 != _lastR2 || r3 != _lastR3 || r4 != _lastR4) {
+        Serial.printf("[TFT] drawRelayBar: R1=%d R2=%d R3=%d R4=%d\n", r1, r2, r3, r4);
         drawRelayBar(r1, r2, r3, r4);
         _lastR1 = r1; _lastR2 = r2; _lastR3 = r3; _lastR4 = r4;
     }
+    
+    _firstDraw = false;  // Clear first draw flag
 }
 
 void TftHandler::showConfigScreen(int cfgState, float val1, float val2) {
