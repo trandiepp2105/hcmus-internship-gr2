@@ -31,6 +31,13 @@
     #define PIN_SR_DATA     33  // DS (Serial Data)
     #define PIN_SR_CLOCK    25  // SHCP (Shift Clock)
     #define PIN_SR_LATCH    32  // STCP (Latch)
+    
+    // TFT ST7735 Display (SPI)
+    #define PIN_TFT_CS      5   // Chip Select
+    #define PIN_TFT_DC      4   // Data/Command
+    #define PIN_TFT_RST     2   // Reset
+    #define PIN_TFT_MOSI    23  // SPI MOSI (SDA)
+    #define PIN_TFT_SCK     18  // SPI Clock (SCK)
 
 #elif defined(ESP8266)
     // --- ESP8266 Configuration ---
