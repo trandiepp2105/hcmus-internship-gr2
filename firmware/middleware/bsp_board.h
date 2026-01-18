@@ -21,9 +21,9 @@
     #define PIN_POT_LOWER   35  // Analog pin for Lower Threshold
     
     // Buttons  
-    #define PIN_BTN_A       16   // Mode Button
-    #define PIN_BTN_B       17   // Action/Select Button
-    #define PIN_BTN_C       19   // Calibration Config Button
+    #define PIN_BTN_MODE        16   // Mode switching button
+    #define PIN_BTN_THRESHOLD   17   // Threshold config button
+    #define PIN_BTN_CALIB       19   // Calibration config button
     
     // Temperature Sensor
     #define PIN_TEMP_SENSOR 15  // DS18B20 Data Pin
