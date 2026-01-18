@@ -17,16 +17,21 @@
 // Layer 3: Application
 #include "App/Controllers/PhController.h"
 
+// Layer 4: RTOS
+#include "RTOS/SharedData.h"
+#include "Tasks/ButtonTask.h"
+#include "Tasks/ControlTask.h"
+
 // --- Global Objects ---
 
 // 1. Storage (System)
 Storage storage;
 
 // 2. BSP Modules (Hardware Wrappers)
-TftHandler tft; // Owns TftDriver, SPI display
-ButtonHandler btnA(PIN_BTN_A); // Owns ButtonDriver
-ButtonHandler btnB(PIN_BTN_B);
-ButtonHandler btnC(PIN_BTN_C); // Calibration config button
+TftHandler tft;
+ButtonHandler btnMode(PIN_BTN_MODE);       // Mode switching button
+ButtonHandler btnThreshold(PIN_BTN_THRESHOLD); // Threshold config button
+ButtonHandler btnCalib(PIN_BTN_CALIB);     // Calibration config button
 PotHandler potUpper(PIN_POT_UPPER); // Owns PotDriver
 PotHandler potLower(PIN_POT_LOWER);
 TempSensorHandler tempSensor(PIN_TEMP_SENSOR);
@@ -36,10 +41,9 @@ RelayHandler relays(PIN_SR_DATA, PIN_SR_CLOCK, PIN_SR_LATCH);
 
 // 3. Application
 PhController app(&storage, 
-                 // &ioExpander, // Disabled
-                 &btnA, 
-                 &btnB,
-                 &btnC,
+                 &btnMode, 
+                 &btnThreshold,
+                 &btnCalib,
                  &tft,
                  &wifi,
                  &potUpper, 
@@ -70,11 +74,12 @@ void setup() {
     }
     Serial.println("[I2C] Scan complete.");
 
-    tft.begin(); // Init TFT Display
-    btnA.begin(); // Init Button Driver
-    btnB.begin();
-    tempSensor.begin(); // Init DS18B20
-    relays.begin(); // Init 74HC595 Relay Controller
+    tft.begin();
+    btnMode.begin();
+    btnThreshold.begin();
+    btnCalib.begin();
+    tempSensor.begin();
+    relays.begin();
     
     // 3. Init Network
     // wifi.resetSettings();
@@ -84,6 +89,33 @@ void setup() {
 
     // 4. Init App
     app.begin();
+    
+    // 5. Init RTOS
+    initRTOS();
+    
+    // 6. Create ButtonTask (runs on Core 1, Priority 5 - HIGHEST)
+    BaseType_t ret = xTaskCreatePinnedToCore(
+        buttonTask,
+        "ButtonTask",
+        2048,
+        NULL,
+        5,
+        &g_buttonTaskHandle,
+        1
+    );
+    Serial.printf("[Main] ButtonTask: %s\n", ret == pdPASS ? "OK" : "FAILED");
+    
+    // 7. Create ControlTask (runs on Core 1, Priority 4)
+    ret = xTaskCreatePinnedToCore(
+        controlTask,
+        "ControlTask",
+        4096,
+        NULL,
+        4,
+        &g_controlTaskHandle,
+        1
+    );
+    Serial.printf("[Main] ControlTask: %s\n", ret == pdPASS ? "OK" : "FAILED");
 }
 
 void loop() {
@@ -92,14 +124,11 @@ void loop() {
     uint32_t loopStart = millis();
     uint32_t now = millis();
     
-    // PRIORITY 1: Handle button inputs FIRST for instant response
-    // Button uses interrupt, but logic executes here
-    uint32_t t1 = millis();
-    app.handleInputs();
-    uint32_t handleInputsTime = millis() - t1;
+    // Button events now handled by ControlTask - no processing needed here
+    uint32_t handleInputsTime = 0;
     
     // PRIORITY 2: WiFi maintenance (every 500ms max)
-    t1 = millis();
+    uint32_t t1 = millis();
     uint32_t wifiTime = 0;
     if (now - lastWifiUpdate > 500) {
         wifi.update();
