@@ -12,27 +12,38 @@ void buttonTask(void* param) {
     TickType_t lastWakeTime = xTaskGetTickCount();
     
     while(1) {
-        // Check MODE button
-        if (btnMode.checkClicked()) {
+        // Update all buttons (track press start time)
+        btnMode.update();
+        btnThreshold.update();
+        btnCalib.update();
+        
+        // ===== MODE Button =====
+        if (btnMode.checkLongPressed()) {
+            ButtonEvent event = {BUTTON_A, BUTTON_LONG_PRESS, millis()};
+            if (xQueueSend(g_buttonQueue, &event, 0) == pdTRUE) {
+                Serial.println("[ButtonTask] MODE LONG PRESS -> FACTORY RESET");
+            }
+        }
+        else if (btnMode.checkClicked()) {
             ButtonEvent event = {BUTTON_A, BUTTON_PRESS, millis()};
             if (xQueueSend(g_buttonQueue, &event, 0) == pdTRUE) {
-                Serial.println("[ButtonTask] MODE button -> queued");
+                Serial.println("[ButtonTask] MODE PRESS");
             }
         }
         
-        // Check THRESHOLD button
+        // ===== THRESHOLD Button =====
         if (btnThreshold.checkClicked()) {
             ButtonEvent event = {BUTTON_B, BUTTON_PRESS, millis()};
             if (xQueueSend(g_buttonQueue, &event, 0) == pdTRUE) {
-                Serial.println("[ButtonTask] THRESHOLD button -> queued");
+                Serial.println("[ButtonTask] THRESHOLD PRESS");
             }
         }
         
-        // Check CALIB button
+        // ===== CALIB Button =====
         if (btnCalib.checkClicked()) {
             ButtonEvent event = {BUTTON_C, BUTTON_PRESS, millis()};
             if (xQueueSend(g_buttonQueue, &event, 0) == pdTRUE) {
-                Serial.println("[ButtonTask] CALIB button -> queued");
+                Serial.println("[ButtonTask] CALIB PRESS");
             }
         }
         
