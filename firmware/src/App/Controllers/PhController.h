@@ -21,9 +21,9 @@
 
 // Network Config
 #define WIFI_AP_NAME          "PH CONTROLLER SETUP"
-#define MQTT_SERVER           "192.168.1.16"  // Change to your server
+#define MQTT_SERVER           "192.168.100.29"  // Change to your server
 #define MQTT_PORT             1883
-#define TB_DEVICE_NAME        "PH_CONTROLLER_006"
+#define TB_DEVICE_NAME        "PH_CONTROLLER_007"
 #define TB_PROVISION_KEY      "7b489653-2d36-45bd-9476-c7aa5b9ae5fc"    // Set your key
 #define TB_PROVISION_SECRET   "5BnZwv6WnuNbs6E45yNq" // Set your secret
 
@@ -82,6 +82,12 @@ public:
      * @param button Button ID (0=A, 1=B, 2=C)
      */
     void handleButtonEvent(uint8_t button);
+    
+    /**
+     * @brief Factory reset - hold MODE button 3 seconds
+     * Resets thresholds to 4.5/7.5 defaults
+     */
+    void factoryReset();
     
     /**
      * @brief Set control mode from MQTT callback
