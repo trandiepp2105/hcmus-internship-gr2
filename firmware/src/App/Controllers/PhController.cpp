@@ -91,8 +91,12 @@ void PhController::setControlMode(bool isAuto) {
     } else {
         _context.systemMode = MODE_MANUAL;
         _context.isAutoControl = false;
-        Serial.println("[PhController] Switched to MANUAL mode via MQTT");
+        stopAllActuators();  // Turn off all relays when entering MANUAL
+        Serial.println("[PhController] Switched to MANUAL mode via MQTT (all relays OFF)");
     }
+    
+    // Reset display for mode change
+    _tft->resetOnModeChange();
     
     // Sync to ThingsBoard
     if (_mqttHandler && _mqttHandler->isConnected()) {
@@ -148,6 +152,24 @@ bool PhController::handleRpcSetRelay(int relay, bool state) {
     if (_context.systemMode != MODE_MANUAL) {
         Serial.println("[PhController] RPC REJECTED: Not in MANUAL mode");
         return false;
+    }
+    
+    // relay = 0 means ALL relays
+    if (relay == 0) {
+        _context.output1 = state;
+        _context.output2 = state;
+        _context.output3 = state;
+        _context.output4 = state;
+        
+        if (_relayHandler) {
+            _relayHandler->setRelay(1, state);
+            _relayHandler->setRelay(2, state);
+            _relayHandler->setRelay(3, state);
+            _relayHandler->setRelay(4, state);
+        }
+        
+        Serial.printf("[PhController] RPC OK: ALL Relays = %s\n", state ? "ON" : "OFF");
+        return true;
     }
     
     // Validate relay number (1-4)
@@ -236,6 +258,23 @@ void PhController::update() {
             if (millis() - _lastSampleTime >= PH_SAMPLE_INTERVAL_MS) {
                 _lastSampleTime = millis();
                 readSensors();
+                
+                // Send telemetry if MQTT connected (same as AUTO mode)
+                if (_mqttHandler && _mqttHandler->isConnected()) {
+                    uint8_t relayMask = 0;
+                    if (_context.output1) relayMask |= 0x01;
+                    if (_context.output2) relayMask |= 0x02;
+                    if (_context.output3) relayMask |= 0x04;
+                    if (_context.output4) relayMask |= 0x08;
+
+                    _mqttHandler->pushTelemetry(
+                        _context.currentPh, 
+                        _context.currentTemp, 
+                        relayMask, 
+                        _context.systemMode, 
+                        0
+                    );
+                }
                 
                 // Log context
                 Serial.printf("[Context] pH=%.2f | Temp=%.1f | Mode=MANUAL | Out=%d%d%d%d\n",
