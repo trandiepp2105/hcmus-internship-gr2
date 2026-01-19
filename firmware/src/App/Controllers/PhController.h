@@ -23,7 +23,7 @@
 #define WIFI_AP_NAME          "PH CONTROLLER SETUP"
 #define MQTT_SERVER           "192.168.100.29"  // Change to your server
 #define MQTT_PORT             1883
-#define TB_DEVICE_NAME        "PH_CONTROLLER_007"
+#define TB_DEVICE_NAME        "PH_CONTROLLER_008"
 #define TB_PROVISION_KEY      "7b489653-2d36-45bd-9476-c7aa5b9ae5fc"    // Set your key
 #define TB_PROVISION_SECRET   "5BnZwv6WnuNbs6E45yNq" // Set your secret
 
