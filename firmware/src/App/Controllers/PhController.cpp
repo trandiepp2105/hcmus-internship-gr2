@@ -762,3 +762,45 @@ void PhController::saveConfig() {
     _storage->putDouble("calib_int", _config.calibIntercept);
     Serial.println("[Config] Saved.");
 }
+
+void PhController::factoryReset() {
+    Serial.println("====================================");
+    Serial.println("       FACTORY RESET TRIGGERED!");
+    Serial.println("====================================");
+    Serial.println("Clearing ALL storage data...");
+    
+    // Stop all actuators first
+    stopAllActuators();
+    
+    // Clear app config storage
+    _storage->clear();
+    Serial.println("[Factory Reset] App config cleared");
+    
+    // Clear WiFi credentials using separate Preferences namespace
+    Preferences wifiPrefs;
+    wifiPrefs.begin("wifi-config", false);
+    wifiPrefs.clear();
+    wifiPrefs.end();
+    Serial.println("[Factory Reset] WiFi credentials cleared");
+    
+    // Clear any other namespaces that might exist
+    Preferences mqttPrefs;
+    mqttPrefs.begin("mqtt-config", false);
+    mqttPrefs.clear();
+    mqttPrefs.end();
+    Serial.println("[Factory Reset] MQTT config cleared");
+    
+    // Show reset message on display
+    _tft->resetOnModeChange();
+    // Can't call full updateDisplay here, just show message
+    
+    Serial.println("====================================");
+    Serial.println("  Factory reset complete!");
+    Serial.println("  Restarting in 2 seconds...");
+    Serial.println("====================================");
+    
+    delay(2000);
+    
+    // Restart ESP32 to apply changes
+    ESP.restart();
+}

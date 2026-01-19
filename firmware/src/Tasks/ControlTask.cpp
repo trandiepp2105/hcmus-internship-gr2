@@ -15,10 +15,15 @@ void controlTask(void* param) {
             uint32_t latency = millis() - event.timestamp;
             const char* btnName = (event.button == 0) ? "MODE" : 
                                   (event.button == 1) ? "THRESHOLD" : "CALIB";
-            Serial.printf("[ControlTask] %s button (latency %lu ms)\n", btnName, latency);
             
-            // Process immediately - no waiting for loop()!
-            app.handleButtonEvent(event.button);
+            // Check if long press (factory reset)
+            if (event.action == BUTTON_LONG_PRESS && event.button == 0) {
+                Serial.printf("[ControlTask] %s LONG PRESS -> FACTORY RESET!\n", btnName);
+                app.factoryReset();
+            } else {
+                Serial.printf("[ControlTask] %s button (latency %lu ms)\n", btnName, latency);
+                app.handleButtonEvent(event.button);
+            }
         }
         
         // Small yield to prevent watchdog
