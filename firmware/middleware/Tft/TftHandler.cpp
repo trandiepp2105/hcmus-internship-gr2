@@ -91,6 +91,42 @@ void TftHandler::drawRelayBar(bool r1, bool r2, bool r3, bool r4) {
     }
 }
 
+void TftHandler::drawRelayToggleBar(bool r1, bool r2, bool r3, bool r4) {
+    int16_t barY = TFT_HEIGHT - FOOTER_HEIGHT;
+    _tft.fillRect(0, barY, TFT_WIDTH, FOOTER_HEIGHT, COLOR_FOOTER_BG);
+    
+    // Toggle switch style: R1 [ON/OFF] R2 [ON/OFF] R3 [ON/OFF] R4 [ON/OFF]
+    bool states[] = {r1, r2, r3, r4};
+    const int16_t toggleW = 35;  // Width per toggle widget
+    const int16_t startX = 5;
+    
+    for (int i = 0; i < 4; i++) {
+        int16_t x = startX + i * toggleW + i * 5;
+        
+        // Relay label
+        _tft.setTextColor(COLOR_TEXT_PRIMARY);
+        _tft.setTextSize(1);
+        _tft.setCursor(x + 5, barY + 3);
+        _tft.print("R");
+        _tft.print(i + 1);
+        
+        // Toggle switch box
+        int16_t boxX = x;
+        int16_t boxY = barY + 12;
+        int16_t boxW = 30;
+        int16_t boxH = 10;
+        
+        // Box background
+        uint16_t bgColor = states[i] ? COLOR_RELAY_ON : 0xC618; // Green or gray
+        _tft.fillRect(boxX, boxY, boxW, boxH, bgColor);
+        _tft.drawRect(boxX, boxY, boxW, boxH, COLOR_TEXT_PRIMARY);
+        
+        // Toggle indicator (slider position)
+        int16_t sliderX = states[i] ? (boxX + boxW - 12) : boxX + 2;
+        _tft.fillRect(sliderX, boxY + 2, 10, boxH - 4, 0xFFFF);
+    }
+}
+
 uint16_t TftHandler::getPhColor(float ph, float upper, float lower) {
     if (ph > upper) return COLOR_PH_HIGH;
     if (ph < lower) return COLOR_PH_LOW;
@@ -102,213 +138,281 @@ uint16_t TftHandler::getPhColor(float ph, float upper, float lower) {
 void TftHandler::showAutoManualScreen(float ph, float temp,
                                        bool r1, bool r2, bool r3, bool r4,
                                        bool isAuto, float upper, float lower) {
-    // First draw: clear everything and draw static elements
+    // Layout constants for new design
+    const int16_t LEFT_WIDTH = 70;      // pH gauge area
+    const int16_t RIGHT_X = 72;         // Right panel start
+    const int16_t BAR_WIDTH = 70;       // Progress bar width
+    const int16_t BAR_HEIGHT = 10;      // Progress bar height
+    
+    // Static vars for Hi/Lo tracking - MUST be declared before _firstDraw check
+    static float lastUpper = -999;
+    static float lastLower = -999;
+    
+    // First draw: clear and draw all static elements
     if (_firstDraw) {
-        _tft.fillRect(0, 0, TFT_WIDTH, TFT_HEIGHT, COLOR_BG_LIGHT);
-        drawHeader("", isAuto ? "AUTOMATIC" : "MANUAL");
+        _tft.fillScreen(COLOR_BG_LIGHT);
+        
+        // Header
+        _tft.fillRect(0, 0, TFT_WIDTH, HEADER_HEIGHT, 0x31A6); // Dark gray header
+        _tft.setTextColor(0xFFFF); // White text
+        _tft.setTextSize(1);
+        int16_t modeX = (TFT_WIDTH - (isAuto ? 4 : 6) * 6) / 2;
+        _tft.setCursor(modeX, 5);
+        _tft.print(isAuto ? "AUTO" : "MANUAL");
         _lastIsAuto = isAuto;
         
-        // Draw thresholds (static on AUTO/MANUAL screen)
-        int16_t rightX = 70;
-        _tft.setTextColor(COLOR_PH_HIGH);
+        // pH label below gauge
+        _tft.setTextColor(COLOR_TEXT_SECONDARY);
         _tft.setTextSize(1);
-        _tft.setCursor(rightX, 40);
-        char upperStr[10];
-        snprintf(upperStr, sizeof(upperStr), "Hi:%.1f", upper);
-        _tft.print(upperStr);
+        _tft.setCursor(28, 88);
+        _tft.print("pH");
         
-        _tft.setTextColor(COLOR_PH_LOW);
-        _tft.setCursor(rightX, 55);
-        char lowerStr[10];
-        snprintf(lowerStr, sizeof(lowerStr), "Lo:%.1f", lower);
-        _tft.print(lowerStr);
-        
-        // Draw footer immediately
-        drawRelayBar(r1, r2, r3, r4);
+        // Footer with relay toggles
+        drawRelayToggleBar(r1, r2, r3, r4);
         _lastR1 = r1; _lastR2 = r2; _lastR3 = r3; _lastR4 = r4;
+        
+        // CRITICAL: Force Hi/Lo bars to draw on first draw
+        lastUpper = -999;
+        lastLower = -999;
         
         _firstDraw = false;
     }
     
-    // Update header only if mode changed
+    // Update header if mode changed
     if (_lastIsAuto != isAuto) {
-        drawHeader("", isAuto ? "AUTOMATIC" : "MANUAL");
+        _tft.fillRect(0, 0, TFT_WIDTH, HEADER_HEIGHT, 0x31A6);
+        _tft.setTextColor(0xFFFF);
+        _tft.setTextSize(1);
+        int16_t modeX = (TFT_WIDTH - (isAuto ? 4 : 6) * 6) / 2;
+        _tft.setCursor(modeX, 5);
+        _tft.print(isAuto ? "AUTO" : "MANUAL");
         _lastIsAuto = isAuto;
+        // Force Hi/Lo bars to redraw on mode change
+        lastUpper = -999;
+        lastLower = -999;
     }
     
     uint16_t phColor = getPhColor(ph, upper, lower);
     
-    // Update pH value only if changed
+    // === LEFT SIDE: pH Gauge ===
     if (abs(ph - _lastPh) > 0.01 || _lastPh < 0) {
-        // Erase old pH value and circles
-        if (_lastPh >= 0) {
-            char oldPhStr[6];
-            snprintf(oldPhStr, sizeof(oldPhStr), "%.1f", _lastPh);
-            _tft.setTextColor(COLOR_BG_LIGHT);
-            _tft.setTextSize(2);
-            _tft.setCursor(18, 51);
-            _tft.print(oldPhStr);
-            
-            _tft.drawCircle(35, 58, 22, COLOR_BG_LIGHT);
-            _tft.drawCircle(35, 58, 21, COLOR_BG_LIGHT);
+        // Clear pH gauge area
+        _tft.fillRect(5, 25, 60, 60, COLOR_BG_LIGHT);
+        
+        // Draw pH gauge arc - using thick lines for solid appearance
+        int16_t cx = 35, cy = 55;
+        int16_t innerR = 22;
+        int16_t outerR = 28;
+        
+        // Draw solid filled arc sections using multiple circles
+        // Blue section (Low: 180-220 degrees = acidic zone)
+        for (int angle = 180; angle < 220; angle++) {
+            float rad = angle * 3.14159 / 180.0;
+            float cosA = cos(rad);
+            float sinA = sin(rad);
+            // Draw line from inner to outer radius
+            for (int r = innerR; r <= outerR; r++) {
+                int16_t x = cx + cosA * r;
+                int16_t y = cy + sinA * r;
+                _tft.drawPixel(x, y, COLOR_PH_LOW);
+            }
         }
         
-        // Draw new pH circles
-        _tft.drawCircle(35, 58, 22, phColor);
-        _tft.drawCircle(35, 58, 21, phColor);
+        // Green section (OK: 220-320 degrees = neutral zone)
+        for (int angle = 220; angle < 320; angle++) {
+            float rad = angle * 3.14159 / 180.0;
+            float cosA = cos(rad);
+            float sinA = sin(rad);
+            for (int r = innerR; r <= outerR; r++) {
+                int16_t x = cx + cosA * r;
+                int16_t y = cy + sinA * r;
+                _tft.drawPixel(x, y, COLOR_PH_OK);
+            }
+        }
         
-        // Draw new pH value
+        // Red section (High: 320-360 degrees = alkaline zone)
+        for (int angle = 320; angle <= 360; angle++) {
+            float rad = angle * 3.14159 / 180.0;
+            float cosA = cos(rad);
+            float sinA = sin(rad);
+            for (int r = innerR; r <= outerR; r++) {
+                int16_t x = cx + cosA * r;
+                int16_t y = cy + sinA * r;
+                _tft.drawPixel(x, y, COLOR_PH_HIGH);
+            }
+        }
+        
+        // Draw pH value in center
         char phStr[6];
         snprintf(phStr, sizeof(phStr), "%.1f", ph);
         _tft.setTextColor(phColor);
         _tft.setTextSize(2);
-        _tft.setCursor(18, 51);
+        int16_t textW = strlen(phStr) * 12;
+        _tft.setCursor(cx - textW/2, cy - 5);
         _tft.print(phStr);
-        
-        // pH label
-        _tft.setTextSize(1);
-        _tft.setTextColor(phColor);
-        _tft.setCursor(30, 85);
-        _tft.print("pH");
         
         _lastPh = ph;
     }
     
-    int16_t rightX = 70;
+    // === RIGHT SIDE: Hi/Lo Bars + Temp ===
     
-    // Update temperature only if changed
-    if (abs(temp - _lastTemp) > 0.1 || _lastTemp < 0) {
-        // Erase old temp
-        if (_lastTemp >= 0) {
-            _tft.fillRect(rightX, 24, 60, 8, COLOR_BG_LIGHT);
-        }
+    // Hi bar (30-50 Y)
+    if (upper != lastUpper) {
+        _tft.fillRect(RIGHT_X, 25, 88, 22, COLOR_BG_LIGHT);
+        _tft.setTextColor(COLOR_PH_HIGH);
+        _tft.setTextSize(1);
+        _tft.setCursor(RIGHT_X, 27);
+        char hiLabel[12];
+        snprintf(hiLabel, sizeof(hiLabel), "Hi: %.1f", upper);
+        _tft.print(hiLabel);
         
-        // Draw new temp
+        // Progress bar below label
+        _tft.fillRect(RIGHT_X, 38, BAR_WIDTH, BAR_HEIGHT, 0xC618);
+        int16_t fillW = (upper / 14.0) * BAR_WIDTH;
+        _tft.fillRect(RIGHT_X, 38, fillW, BAR_HEIGHT, COLOR_PH_HIGH);
+        
+        lastUpper = upper;
+    }
+    
+    // Lo bar (52-72 Y)
+    if (lower != lastLower) {
+        _tft.fillRect(RIGHT_X, 50, 88, 22, COLOR_BG_LIGHT);
+        _tft.setTextColor(COLOR_PH_LOW);
+        _tft.setTextSize(1);
+        _tft.setCursor(RIGHT_X, 52);
+        char loLabel[12];
+        snprintf(loLabel, sizeof(loLabel), "Lo: %.1f", lower);
+        _tft.print(loLabel);
+        
+        // Progress bar below label
+        _tft.fillRect(RIGHT_X, 63, BAR_WIDTH, BAR_HEIGHT, 0xC618);
+        int16_t fillW = (lower / 14.0) * BAR_WIDTH;
+        _tft.fillRect(RIGHT_X, 63, fillW, BAR_HEIGHT, COLOR_PH_LOW);
+        
+        lastLower = lower;
+    }
+    
+    // Temperature (80-95 Y)
+    if (abs(temp - _lastTemp) > 0.1 || _lastTemp < 0) {
+        _tft.fillRect(RIGHT_X, 80, 80, 15, COLOR_BG_LIGHT);
         _tft.setTextColor(COLOR_TEXT_PRIMARY);
         _tft.setTextSize(1);
-        _tft.setCursor(rightX, 24);
-        char tempStr[12];
-        snprintf(tempStr, sizeof(tempStr), "T:%.1fC", temp);
+        _tft.setCursor(RIGHT_X, 82);
+        char tempStr[15];
+        snprintf(tempStr, sizeof(tempStr), "Temp: %.1fC", temp);
         _tft.print(tempStr);
-        
         _lastTemp = temp;
     }
     
-    // Update status text when pH zone changes
-    static int lastZone = -1;
-    int currentZone = (ph > upper) ? 2 : (ph < lower) ? 0 : 1;
-    
-    if (currentZone != lastZone) {
-        _tft.fillRect(rightX, 75, 60, 8, COLOR_BG_LIGHT);
-        
-        _tft.setTextColor(phColor);
-        _tft.setTextSize(1);
-        _tft.setCursor(rightX, 75);
-        
-        if (ph > upper) {
-            _tft.print("HIGH!");
-        } else if (ph < lower) {
-            _tft.print("LOW!");
-        } else {
-            _tft.print("OK");
-        }
-        
-        lastZone = currentZone;
-    }
-    
-    // Update relay bar only if changed OR first draw
-    if (_firstDraw || r1 != _lastR1 || r2 != _lastR2 || r3 != _lastR3 || r4 != _lastR4) {
-        Serial.printf("[TFT] drawRelayBar: R1=%d R2=%d R3=%d R4=%d\n", r1, r2, r3, r4);
-        drawRelayBar(r1, r2, r3, r4);
+    // === FOOTER: Relay Toggle Bar ===
+    if (r1 != _lastR1 || r2 != _lastR2 || r3 != _lastR3 || r4 != _lastR4) {
+        drawRelayToggleBar(r1, r2, r3, r4);
         _lastR1 = r1; _lastR2 = r2; _lastR3 = r3; _lastR4 = r4;
     }
-    
-    _firstDraw = false;  // Clear first draw flag
 }
 
 void TftHandler::showConfigScreen(int cfgState, float val1, float val2) {
-    // Only draw everything on mode change or first call
+    // New layout: Header | UPPER (left) | LOWER (right) | pH Scale | Footer
+    
+    // Check if need full redraw
     if (_lastCfgState != cfgState) {
         _tft.fillScreen(COLOR_BG_LIGHT);
-        drawHeader("", "CONFIGURATION");
         _lastCfgState = cfgState;
+        _lastConfigVal1 = -999;
+        _lastConfigVal2 = -999;
         
-        // Draw static labels
-        _tft.setTextColor(COLOR_TEXT_PRIMARY);
+        // Dark header
+        _tft.fillRect(0, 0, TFT_WIDTH, HEADER_HEIGHT, 0x31A6);
+        _tft.setTextColor(0xFFFF);
         _tft.setTextSize(1);
         
         if (cfgState == CFG_THRESHOLD) {
-            _tft.setCursor(5, 30);
-            _tft.print("Upper:");
-            _tft.setCursor(5, 55);
-            _tft.print("Lower:");
-        } else if (cfgState == CFG_SLOPE) {
-            _tft.setCursor(10, 40);
-            _tft.print("Slope:");
+            _tft.setCursor(25, 5);
+            _tft.print("THRESHOLD CONFIG");
+            
+            // Divider line between UPPER and LOWER
+            _tft.drawFastVLine(80, 22, 60, 0xC618);
+            
         } else {
-            _tft.setCursor(10, 40);
-            _tft.print("Intercept:");
+            _tft.setCursor(30, 5);
+            _tft.print("CALIB CONFIG");
+            
+            // Divider line
+            _tft.drawFastVLine(80, 22, 60, 0xC618);
         }
         
-        // Draw footer
-        drawFooter("Rotate pot    [A]Save");
+        // Footer
+        _tft.fillRect(0, TFT_HEIGHT - FOOTER_HEIGHT, TFT_WIDTH, FOOTER_HEIGHT, COLOR_FOOTER_BG);
+        _tft.setTextColor(COLOR_TEXT_SECONDARY);
+        _tft.setTextSize(1);
+        _tft.setCursor(10, TFT_HEIGHT - 16);
+        _tft.print("Rotate pot | [THR] Save");
     }
     
-    // Update only the values (partial update)
-    
+    // === Update values (partial update) ===
     if (cfgState == CFG_THRESHOLD) {
-        // Update upper value if changed
+        // LEFT: UPPER value
         if (abs(val1 - _lastConfigVal1) > 0.01) {
-            // Clear value area
-            _tft.fillRect(50, 26, 48, 16, COLOR_BG_LIGHT);
-            _tft.setTextColor(COLOR_PH_HIGH);
-            _tft.setTextSize(2);
-            _tft.setCursor(50, 26);
-            char v1[8];
-            snprintf(v1, sizeof(v1), "%.2f", val1);
-            _tft.print(v1);
+            _tft.fillRect(5, 25, 70, 55, COLOR_BG_LIGHT);
             
-            // Update progress bar
-            int bar1 = (int)((val1 / 14.0) * 60);
-            _tft.fillRect(100, 28, 55, 8, COLOR_FOOTER_BG);
-            _tft.fillRect(100, 28, bar1, 8, COLOR_PH_HIGH);
+            // UPPER label
+            _tft.setTextColor(COLOR_TEXT_SECONDARY);
+            _tft.setTextSize(1);
+            _tft.setCursor(22, 28);
+            _tft.print("UPPER");
+            
+            // Large value
+            _tft.setTextColor(COLOR_PH_HIGH);  // Red
+            _tft.setTextSize(3);
+            char v1[6];
+            snprintf(v1, sizeof(v1), "%.1f", val1);
+            int16_t w = strlen(v1) * 18;
+            _tft.setCursor(40 - w/2, 45);
+            _tft.print(v1);
             
             _lastConfigVal1 = val1;
         }
         
-        // Update lower value if changed
+        // RIGHT: LOWER value
         if (abs(val2 - _lastConfigVal2) > 0.01) {
-            // Clear value area
-            _tft.fillRect(50, 51, 48, 16, COLOR_BG_LIGHT);
-            _tft.setTextColor(COLOR_PH_LOW);
-            _tft.setTextSize(2);
-            _tft.setCursor(50, 51);
-            char v2[8];
-            snprintf(v2, sizeof(v2), "%.2f", val2);
-            _tft.print(v2);
+            _tft.fillRect(85, 25, 70, 55, COLOR_BG_LIGHT);
             
-            // Update progress bar
-            int bar2 = (int)((val2 / 14.0) * 60);
-            _tft.fillRect(100, 53, 55, 8, COLOR_FOOTER_BG);
-            _tft.fillRect(100, 53, bar2, 8, COLOR_PH_LOW);
+            // LOWER label
+            _tft.setTextColor(COLOR_TEXT_SECONDARY);
+            _tft.setTextSize(1);
+            _tft.setCursor(102, 28);
+            _tft.print("LOWER");
+            
+            // Large value
+            _tft.setTextColor(COLOR_PH_LOW);  // Blue
+            _tft.setTextSize(3);
+            char v2[6];
+            snprintf(v2, sizeof(v2), "%.1f", val2);
+            int16_t w = strlen(v2) * 18;
+            _tft.setCursor(120 - w/2, 45);
+            _tft.print(v2);
             
             _lastConfigVal2 = val2;
         }
         
     } else {
-        // For slope/intercept, only update value
+        // CALIB mode: SLOPE (left) / INTERCEPT (right)
         if (abs(val1 - _lastConfigVal1) > 0.001) {
-            _tft.fillRect(20, 55, 120, 16, COLOR_BG_LIGHT);
-            _tft.setTextColor(COLOR_TEXT_PRIMARY);
+            _tft.fillRect(5, 25, 70, 55, COLOR_BG_LIGHT);
+            
+            _tft.setTextColor(COLOR_TEXT_SECONDARY);
+            _tft.setTextSize(1);
+            _tft.setCursor(18, 28);
+            _tft.print(cfgState == CFG_SLOPE ? "SLOPE" : "INTERCEPT");
+            
+            _tft.setTextColor(COLOR_PH_OK);  // Green
             _tft.setTextSize(2);
-            _tft.setCursor(20, 55);
-            char valStr[12];
-            if (cfgState == CFG_SLOPE) {
-                snprintf(valStr, sizeof(valStr), "%.4f", val1);
-            } else {
-                snprintf(valStr, sizeof(valStr), "%.3f", val1);
-            }
+            char valStr[10];
+            snprintf(valStr, sizeof(valStr), "%.3f", val1);
+            int16_t w = strlen(valStr) * 12;
+            _tft.setCursor(40 - w/2, 50);
             _tft.print(valStr);
+            
             _lastConfigVal1 = val1;
         }
     }
@@ -368,7 +472,7 @@ void TftHandler::showInfoScreen(bool wifiConnected, bool mqttConnected,
         _tft.print(calStr);
         
         // Footer
-        String hint = "[A]->" + nextModeName;
+        String hint = "[MODE]->" + nextModeName;
         drawFooter(hint);
         
         _infoDrawn = true;

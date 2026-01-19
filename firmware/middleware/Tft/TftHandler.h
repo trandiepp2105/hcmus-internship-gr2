@@ -111,6 +111,7 @@ private:
     void drawHeader(const String& title, const String& mode = "");
     void drawFooter(const String& hint);
     void drawRelayBar(bool r1, bool r2, bool r3, bool r4);
+    void drawRelayToggleBar(bool r1, bool r2, bool r3, bool r4);
     uint16_t getPhColor(float ph, float upper, float lower);
 };
 
